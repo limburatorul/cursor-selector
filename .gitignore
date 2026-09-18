@@ -1,0 +1,7 @@
+# The library is the user's own collection; release zips carry the redistributable packs.
+Library/
+backup.json
+*.exe
+graft/
+.claude/
+.ignore
