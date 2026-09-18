@@ -540,8 +540,8 @@ namespace CursorSelector
             { "No",          new[] { "^no$", "unavailable", "unavail", "nodrop", "forbidden" } },
             { "SizeNS",      new[] { "verticalresize", "resizevertical", "sizens", "vertical", "^vert$", "^ns$" } },
             { "SizeWE",      new[] { "horizontalresize", "resizehorizontal", "sizewe", "horizontal", "^horz$", "^we$" } },
-            { "SizeNWSE",    new[] { "diagonalresize1", "sizenwse", "diagonal1", "diag1", "dgn1", "resize1", "^nwse$" } },
-            { "SizeNESW",    new[] { "diagonalresize2", "sizenesw", "diagonal2", "diag2", "dgn2", "resize2", "^nesw$" } },
+            { "SizeNWSE",    new[] { "diagonalresize1", "sizenwse", "diagonal1", "diag1", "dgn1", "dng1", "resize1", "^nwse$" } },
+            { "SizeNESW",    new[] { "diagonalresize2", "sizenesw", "diagonal2", "diag2", "dgn2", "dng2", "resize2", "^nesw$" } },
             { "SizeAll",     new[] { "sizeall", "^move$", "move" } },
             { "UpArrow",     new[] { "alternateselect", "alternate", "uparrow", "^up$" } },
             { "Hand",        new[] { "linkselect", "link", "^hand$" } },
@@ -578,8 +578,14 @@ namespace CursorSelector
 
         private static void ResolveByFileName(FileInfo[] files, Dictionary<string, string> map)
         {
+            ResolveByFileName(files, map, Tier1, Tier2);
+        }
+
+        private static void ResolveByFileName(FileInfo[] files, Dictionary<string, string> map,
+                                              params Dictionary<string, string[]>[] tiers)
+        {
             var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var tier in new[] { Tier1, Tier2 })
+            foreach (var tier in tiers)
             {
                 foreach (var role in Roles.Order)
                 {
@@ -695,6 +701,26 @@ namespace CursorSelector
             return true;
         }
 
+        /// <summary>
+        /// Install.inf-urile din pachete nu sunt de incredere: macOS (ful1e5) isi listeaza fisierele
+        /// in alta ordine decat cea a rolurilor, Material Design inverseaza Pin/Person - Windows le-ar
+        /// instala la fel de amestecat. Un nume de fisier fara echivoc ("Unavailable", "Vert", "Pin")
+        /// bate deci maparea din INF; INF-ul ramane pentru rolurile pe care numele nu le lamureste.
+        /// </summary>
+        private static void CorrectByFileName(FileInfo[] files, Dictionary<string, string> map)
+        {
+            var byName = new Dictionary<string, string>(StringComparer.Ordinal);
+            ResolveByFileName(files, byName, Tier1);
+            var claimed = new HashSet<string>(byName.Values, StringComparer.OrdinalIgnoreCase);
+            foreach (var role in Roles.Order)
+            {
+                string file;
+                if (byName.TryGetValue(role, out file)) map[role] = file;
+                // Un fisier revendicat de alt rol prin nume nu mai poate sta si aici.
+                else if (map.TryGetValue(role, out file) && claimed.Contains(file)) map.Remove(role);
+            }
+        }
+
         private static Scheme FromFolder(string dir)
         {
             // Fisierele din radacina au prioritate; coboram in subfoldere doar daca radacina e goala,
@@ -709,8 +735,12 @@ namespace CursorSelector
 
             // Prioritate: scheme.json (scris de mana) > Install.inf > ghicire dupa nume.
             if (!ResolveByJson(dir, scheme.Map, ref name))
-                if (!ResolveByInf(dir, files, scheme.Map, ref name))
+            {
+                if (ResolveByInf(dir, files, scheme.Map, ref name))
+                    CorrectByFileName(files, scheme.Map);
+                else
                     ResolveByFileName(files, scheme.Map);
+            }
 
             if (scheme.Map.Count == 0) return null;
             scheme.Name = name;
