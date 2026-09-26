@@ -989,7 +989,7 @@ namespace CursorSelector
             var buttons = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                Height = 176,
+                Height = 220,
                 FlowDirection = FlowDirection.TopDown,
                 WrapContents = false,
                 BackColor = Theme.Ground2,
@@ -1017,7 +1017,28 @@ namespace CursorSelector
                 ForeColor = Theme.Dim,
                 TextAlign = ContentAlignment.TopCenter
             };
-            buttons.Controls.AddRange(new Control[] { dropHint, import, openLib, refresh });
+            const string mail = "feedback@protagonistlabs.app", more = "More apps from Protagonist Labs";
+            var links = new LinkLabel
+            {
+                Text = "Feedback: " + mail + "\nWebsite \u00b7 " + more,
+                Size = new Size(312, 40),
+                Margin = new Padding(0),
+                Font = Theme.FontSmall,
+                ForeColor = Theme.Dim,
+                LinkColor = Theme.Accent,
+                ActiveLinkColor = Theme.AccentHover,
+                LinkBehavior = LinkBehavior.HoverUnderline,
+                TextAlign = ContentAlignment.TopCenter
+            };
+            links.Links.Clear();
+            links.Links.Add(links.Text.IndexOf(mail), mail.Length, "mailto:" + mail + "?subject=Cursor%20Selector%20feedback");
+            links.Links.Add(links.Text.IndexOf("Website"), 7, "https://protagonistlabs.app/cursorselector/?utm_source=app&utm_medium=cursorselector");
+            links.Links.Add(links.Text.IndexOf(more), more.Length, "https://protagonistlabs.app/?utm_source=app&utm_medium=cursorselector");
+            links.LinkClicked += delegate(object s, LinkLabelLinkClickedEventArgs e)
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo((string)e.Link.LinkData) { UseShellExecute = true });
+            };
+            buttons.Controls.AddRange(new Control[] { dropHint, import, openLib, refresh, links });
 
             // Controlul cu Dock=Fill trebuie sa fie in fata, ca sa primeasca spatiul ramas.
             left.Controls.Add(_list);
