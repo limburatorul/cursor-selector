@@ -1032,8 +1032,8 @@ namespace CursorSelector
             };
             links.Links.Clear();
             links.Links.Add(links.Text.IndexOf(mail), mail.Length, "mailto:" + mail + "?subject=Cursor%20Selector%20feedback");
-            links.Links.Add(links.Text.IndexOf("Website"), 7, "https://protagonistlabs.app/cursorselector/?utm_source=app&utm_medium=cursorselector");
-            links.Links.Add(links.Text.IndexOf(more), more.Length, "https://protagonistlabs.app/?utm_source=app&utm_medium=cursorselector");
+            links.Links.Add(links.Text.IndexOf("Website"), 7, "https://protagonistlabs.app/cursorselector/?utm_source=cursorselector&utm_medium=app&utm_campaign=sidebar");
+            links.Links.Add(links.Text.IndexOf(more), more.Length, "https://protagonistlabs.app/?utm_source=cursorselector&utm_medium=app&utm_campaign=more-apps");
             links.LinkClicked += delegate(object s, LinkLabelLinkClickedEventArgs e)
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo((string)e.Link.LinkData) { UseShellExecute = true });
