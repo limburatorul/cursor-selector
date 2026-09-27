@@ -1,5 +1,7 @@
 # Cursor Selector
 
+**Descărcare și detalii:** [protagonistlabs.app/cursorselector](https://protagonistlabs.app/cursorselector/)
+
 Aplicație portabilă pentru schimbat cursorul Windows: o bibliotecă de scheme în folderul aplicației
 și un client grafic care le previzualizează pe toate cele 17 roluri înainte să le aplici.
 
