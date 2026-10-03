@@ -134,3 +134,9 @@ Windows, so no SDK needs installing.
 The source is plain ASCII: the special characters in the interface (`—`, `·`, `…`) are written as
 `\uXXXX` escapes. That way it does not depend on a BOM and does not break if you open it in an
 editor that strips one.
+
+## More from Protagonist Labs
+
+- [Frostpane](https://protagonistlabs.app/frostpane/?utm_source=github&utm_medium=readme&utm_campaign=cursorselector): desktop icons in glass panes that stay blurred over an animated wallpaper.
+- [Glaze](https://protagonistlabs.app/glaze/?utm_source=github&utm_medium=readme&utm_campaign=cursorselector): a desktop player for YouTube, free.
+- [All apps](https://protagonistlabs.app/?utm_source=github&utm_medium=readme&utm_campaign=cursorselector): Windows apps that each do one job properly.
