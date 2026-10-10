@@ -313,66 +313,83 @@ namespace CursorSelector
     }
 
     /// <summary>Deseneaza un cursor (.cur sau .ani) pe o pastila gri si il anima cadru cu cadru.</summary>
-    internal sealed class PreviewBox : Control
+    /// <summary>
+    /// O placa de rol: cursorul sta pe o pastila gri cat el, nu pe o lespede - 17 lespezi deschise
+    /// la culoare acopereau interfata intunecata. Placa deseneaza tot (fundal, pastila, cursor,
+    /// eticheta), deci nu mai sunt trei controale suprapuse care se repicteaza unul peste altul.
+    /// </summary>
+    internal sealed class RoleTile : Control
     {
-        public IntPtr CursorHandle = IntPtr.Zero;
-        public int Step;
-        public bool Animated = true;
-        public int DrawSize = 64;
+        internal const int W = 150, H = 112, Chip = 68, Draw = 52;
 
-        public PreviewBox()
+        internal readonly string Role;
+        internal string File;
+        internal IntPtr CursorHandle = IntPtr.Zero;
+        private int _step;
+        private bool _animated = true;
+        private bool _hover;
+
+        internal RoleTile(string role, string display)
         {
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint
                    | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-            BackColor = Theme.Panel;
+            Role = role;
+            Text = display;
+            Size = new Size(W, H);
+            Margin = new Padding(3);
+            BackColor = Theme.Ground;
+            Cursor = Cursors.Hand;
         }
 
-        public void Reset(IntPtr handle)
+        internal void Reset(IntPtr handle, string file)
         {
             CursorHandle = handle;
-            Step = 0;
-            Animated = true;
+            File = file;
+            _step = 0;
+            _animated = true;
             Invalidate();
         }
 
-        public void Advance()
+        internal void Advance()
         {
-            if (Animated && CursorHandle != IntPtr.Zero)
-            {
-                Step++;
-                Invalidate();
-            }
+            if (_animated && CursorHandle != IntPtr.Zero) { _step++; Invalidate(); }
         }
+
+        protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { _hover = false; Invalidate(); base.OnMouseLeave(e); }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            var swatch = new Rectangle(0, 0, Width - 1, Height - 1);
-
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            Theme.FillRounded(g, swatch, Theme.Radius, CursorHandle == IntPtr.Zero ? Theme.SwatchEmpty : Theme.Swatch);
+            var tile = new Rectangle(0, 0, Width - 1, Height - 1);
+            bool empty = CursorHandle == IntPtr.Zero;
+
+            Theme.FillRounded(g, tile, Theme.Radius, _hover ? Theme.Panel2 : Theme.Panel);
+            Theme.DrawRounded(g, tile, Theme.Radius, _hover ? Theme.EdgeBright : Theme.Edge);
+
+            var chip = new Rectangle((Width - Chip) / 2, 10, Chip, Chip);
+            Theme.FillRounded(g, chip, 20, empty ? Theme.SwatchEmpty : Theme.Swatch);
             g.SmoothingMode = SmoothingMode.Default;
 
-            if (CursorHandle == IntPtr.Zero)
+            var label = new Rectangle(4, chip.Bottom + 8, Width - 8, Height - chip.Bottom - 10);
+            TextRenderer.DrawText(g, Text, Theme.FontSmall, label, empty ? Theme.Dimmer : Theme.Text,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak);
+
+            if (empty)
             {
-                TextRenderer.DrawText(g, "\u2014", Theme.FontBody, ClientRectangle, Theme.Dimmer,
+                TextRenderer.DrawText(g, "\u2014", Theme.FontBody, chip, Theme.Dimmer,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
                 return;
             }
 
-            int x = (Width - DrawSize) / 2;
-            int y = (Height - DrawSize) / 2;
+            int x = chip.X + (Chip - Draw) / 2, y = chip.Y + (Chip - Draw) / 2;
             IntPtr hdc = g.GetHdc();
-            bool ok = Native.DrawIconEx(hdc, x, y, CursorHandle, DrawSize, DrawSize, Step, IntPtr.Zero, Native.DI_NORMAL);
+            bool ok = Native.DrawIconEx(hdc, x, y, CursorHandle, Draw, Draw, _step, IntPtr.Zero, Native.DI_NORMAL);
             g.ReleaseHdc(hdc);
 
             // Cursor static: pasul 1 esueaza, revenim la cadrul 0 si oprim animatia.
-            if (!ok && Step != 0)
-            {
-                Step = 0;
-                Animated = false;
-                Invalidate();
-            }
+            if (!ok && _step != 0) { _step = 0; _animated = false; Invalidate(); }
         }
     }
 
@@ -604,6 +621,17 @@ namespace CursorSelector
         {
             "Arrow", "Help", "AppStarting", "Wait", "Crosshair", "IBeam", "NWPen", "No",
             "SizeNS", "SizeWE", "SizeNWSE", "SizeNESW", "SizeAll", "UpArrow", "Hand", "Pin", "Person"
+        };
+
+        // Grupurile din interfata: 17 roluri intr-un bloc se citeau ca o lista fara cap, iar randul
+        // de la final ramanea ciuntit. Order de mai sus ramane ordinea canonica, cea din registru.
+        internal static readonly string[][] Groups =
+        {
+            new[] { "Pointing", "Arrow", "UpArrow", "Hand", "Help" },
+            new[] { "Writing",  "IBeam", "NWPen", "Crosshair" },
+            new[] { "Status",   "Wait", "AppStarting", "No" },
+            new[] { "Sizing",   "SizeNS", "SizeWE", "SizeNWSE", "SizeNESW", "SizeAll" },
+            new[] { "Extras",   "Pin", "Person" }
         };
 
         internal static readonly Dictionary<string, string> Display = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -977,6 +1005,106 @@ namespace CursorSelector
         }
     }
 
+    /// <summary>
+    /// Fereastra unui singur cursor: desenat mare, cu fisierul din spatele lui. Pana aici,
+    /// o placa de 64px era tot ce se putea vedea dintr-un cursor inainte sa-l aplici.
+    /// </summary>
+    internal sealed class CursorDetail : Form
+    {
+        private readonly IntPtr _handle;
+        private readonly Timer _timer = new Timer();
+        private int _step;
+        private bool _animated = true;
+
+        internal CursorDetail(string role, string file, IntPtr handle, int frames)
+        {
+            _handle = handle;
+            Text = role;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = MinimizeBox = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(420, 340);
+            BackColor = Theme.Ground2;
+            Font = Theme.FontBody;
+            ShowInTaskbar = false;
+
+            var name = new TrackedLabel
+            {
+                Text = role, Font = Theme.FontDisplay, Ink = Theme.Text, Tracking = -0.4f,
+                Bounds = new Rectangle(24, 186, 372, 34)
+            };
+            var lines = new Label
+            {
+                Bounds = new Rectangle(24, 222, 372, 70),
+                Font = Theme.FontMono,
+                ForeColor = Theme.Dim,
+                BackColor = Color.Transparent,
+                AutoSize = false,
+                Text = Describe(file, frames)
+            };
+
+            var close = new FlatButton("Close", false) { Bounds = new Rectangle(248, 292, 148, 36) };
+            close.Click += delegate { Close(); };
+            var folder = new FlatButton("Show the file", false) { Bounds = new Rectangle(24, 292, 160, 36) };
+            folder.Enabled = file != null && System.IO.File.Exists(file);
+            folder.Click += delegate
+            {
+                // /select, deschide folderul cu fisierul deja evidentiat.
+                System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + file + "\"");
+            };
+
+            Controls.Add(name);
+            Controls.Add(lines);
+            Controls.Add(close);
+            Controls.Add(folder);
+
+            _timer.Interval = 90;
+            _timer.Tick += delegate { if (_animated) { _step++; Invalidate(new Rectangle(0, 0, ClientSize.Width, 180)); } };
+            _timer.Start();
+            FormClosed += delegate { _timer.Stop(); };
+            KeyPreview = true;
+            KeyDown += delegate(object sender, KeyEventArgs e) { if (e.KeyCode == Keys.Escape) Close(); };
+        }
+
+        private static string Describe(string file, int frames)
+        {
+            if (file == null || !System.IO.File.Exists(file)) return "no file - Windows default";
+            var info = new System.IO.FileInfo(file);
+            string kind = frames > 1 ? frames + " frames" : "single frame";
+            return info.Name + "\n"
+                 + (info.Length / 1024.0).ToString("0.#") + " KB  \u00b7  " + kind + "\n\n"
+                 + info.DirectoryName;
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            int on = 1;
+            if (Native.DwmSetWindowAttribute(Handle, 20, ref on, sizeof(int)) != 0)
+                Native.DwmSetWindowAttribute(Handle, 19, ref on, sizeof(int));
+            int round = 2;
+            Native.DwmSetWindowAttribute(Handle, 33, ref round, sizeof(int));
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Theme.Ground2);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            Theme.DrawAura(g, new Rectangle(0, 0, ClientSize.Width, 180));
+
+            var chip = new Rectangle((ClientSize.Width - 150) / 2, 22, 150, 150);
+            Theme.FillRounded(g, chip, 34, _handle == IntPtr.Zero ? Theme.SwatchEmpty : Theme.Swatch);
+            g.SmoothingMode = SmoothingMode.Default;
+            if (_handle == IntPtr.Zero) return;
+
+            IntPtr hdc = g.GetHdc();
+            bool ok = Native.DrawIconEx(hdc, chip.X + 11, chip.Y + 11, _handle, 128, 128, _step, IntPtr.Zero, Native.DI_NORMAL);
+            g.ReleaseHdc(hdc);
+            if (!ok && _step != 0) { _step = 0; _animated = false; Invalidate(chip); }
+        }
+    }
+
     internal sealed class MainForm : Form
     {
         private readonly string _libraryDir;
@@ -992,8 +1120,7 @@ namespace CursorSelector
         private readonly FlatButton _restore = new FlatButton("Restore saved cursors", false);
         private readonly Timer _timer = new Timer();
 
-        private readonly Dictionary<string, PreviewBox> _boxes = new Dictionary<string, PreviewBox>(StringComparer.Ordinal);
-        private readonly Dictionary<string, Label> _labels = new Dictionary<string, Label>(StringComparer.Ordinal);
+        private readonly Dictionary<string, RoleTile> _tiles = new Dictionary<string, RoleTile>(StringComparer.Ordinal);
         private List<IntPtr> _liveHandles = new List<IntPtr>();
         private int _hoverIndex = -1;
         private string _activeName = "";
@@ -1007,7 +1134,7 @@ namespace CursorSelector
 
             Text = "Cursor Selector";
             Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-            Size = new Size(1240, 840);
+            Size = new Size(1240, 920);
             MinimumSize = new Size(980, 640);
             StartPosition = FormStartPosition.CenterScreen;
             Font = Theme.FontBody;
@@ -1020,7 +1147,7 @@ namespace CursorSelector
             _timer.Interval = 90;
             _timer.Tick += delegate
             {
-                foreach (var box in _boxes.Values) box.Advance();
+                foreach (var tile in _tiles.Values) tile.Advance();
             };
 
             // Un folder sau un .zip lasat oriunde pe fereastra. Evenimentele de drop nu urca din
@@ -1256,7 +1383,7 @@ namespace CursorSelector
 
             _flow.Dock = DockStyle.Fill;
             _flow.AutoScroll = true;
-            _flow.Padding = new Padding(16, 14, 16, 14);
+            _flow.Padding = new Padding(14, 10, 14, 10);
             _flow.HandleCreated += delegate { Native.SetWindowTheme(_flow.Handle, "DarkMode_Explorer", null); };
 
             var bottom = new Panel
@@ -1300,38 +1427,59 @@ namespace CursorSelector
 
         private void BuildTiles()
         {
-            foreach (var role in Roles.Order)
+            // O coloana per grup, nu randuri cu antet: in randuri, cele 17 placi plus cele cinci
+            // antete depasesc inaltimea cardului si ultimul grup ramanea taiat la mijloc.
+            foreach (var group in Roles.Groups)
             {
-                var tile = new Panel
+                var column = new FlowLayoutPanel
                 {
-                    Size = new Size(150, 136),
-                    Margin = new Padding(4),
-                    BackColor = Theme.Panel
+                    FlowDirection = FlowDirection.TopDown,
+                    WrapContents = false,
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    Margin = new Padding(0, 0, 6, 0),
+                    BackColor = Color.Transparent
                 };
 
-                var box = new PreviewBox
+                column.Controls.Add(new Rail(group[0])
                 {
-                    Bounds = new Rectangle(0, 0, 150, 92),
-                    DrawSize = 64
-                };
+                    Width = RoleTile.W,
+                    Height = 22,
+                    Margin = new Padding(3, 2, 3, 2)
+                });
 
-                var label = new Label
+                for (int i = 1; i < group.Length; i++)
                 {
-                    Bounds = new Rectangle(0, 98, 150, 38),
-                    Text = Roles.Display[role],
-                    Font = Theme.FontSmall,
-                    TextAlign = ContentAlignment.TopCenter,
-                    ForeColor = Theme.Text,
-                    BackColor = Color.Transparent,
-                    AutoSize = false
-                };
-
-                tile.Controls.Add(label);
-                tile.Controls.Add(box);
-                _flow.Controls.Add(tile);
-                _boxes[role] = box;
-                _labels[role] = label;
+                    var tile = new RoleTile(group[i], Roles.Display[group[i]]);
+                    var captured = tile;
+                    tile.Click += delegate { ShowCursorDetail(captured); };
+                    column.Controls.Add(tile);
+                    _tiles[group[i]] = tile;
+                }
+                _flow.Controls.Add(column);
             }
+        }
+
+        /// <summary>Cate cadre are cursorul: le cerem pe rand pana cand DrawIconEx refuza unul.</summary>
+        private static int CountFrames(IntPtr handle)
+        {
+            if (handle == IntPtr.Zero) return 0;
+            using (var probe = new Bitmap(1, 1))
+            using (var g = Graphics.FromImage(probe))
+            {
+                IntPtr hdc = g.GetHdc();
+                int frames = 0;
+                while (frames < 200 && Native.DrawIconEx(hdc, -200, -200, handle, 32, 32, frames, IntPtr.Zero, Native.DI_NORMAL))
+                    frames++;
+                g.ReleaseHdc(hdc);
+                return frames;
+            }
+        }
+
+        private void ShowCursorDetail(RoleTile tile)
+        {
+            using (var detail = new CursorDetail(tile.Text, tile.File, tile.CursorHandle, CountFrames(tile.CursorHandle)))
+                detail.ShowDialog(this);
         }
 
         private void ShowScheme(Scheme scheme)
@@ -1351,8 +1499,7 @@ namespace CursorSelector
                     handle = Native.LoadCursorFromFile(path);   // unele .ani vechi nu trec prin LoadImage
                 if (handle != IntPtr.Zero) current.Add(handle);
 
-                _boxes[role].Reset(handle);
-                _labels[role].ForeColor = path == null ? Theme.Dimmer : Theme.Text;
+                _tiles[role].Reset(handle, path);
             }
 
             // Fiecare incarcare creeaza un handle nou si procesul are o limita (~300 cursoare
