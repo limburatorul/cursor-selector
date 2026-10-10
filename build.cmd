@@ -17,6 +17,10 @@ if not exist "%CSC%" (
     /reference:System.Windows.Forms.dll ^
     /reference:System.Web.Extensions.dll ^
     /reference:Microsoft.VisualBasic.dll ^
+    /resource:"%~dp0fonts\BricolageGrotesque-Bold.ttf",Fonts.BricolageGrotesque-Bold.ttf ^
+    /resource:"%~dp0fonts\IBMPlexSans-Regular.ttf",Fonts.IBMPlexSans-Regular.ttf ^
+    /resource:"%~dp0fonts\IBMPlexSans-Bold.ttf",Fonts.IBMPlexSans-Bold.ttf ^
+    /resource:"%~dp0fonts\IBMPlexMono-Regular.ttf",Fonts.IBMPlexMono-Regular.ttf ^
     "%~dp0src\CursorSelector.cs"
 
 if errorlevel 1 (

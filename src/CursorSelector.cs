@@ -86,6 +86,7 @@ namespace CursorSelector
         internal static readonly Color Dimmer = Color.FromArgb(0x5D, 0x68, 0x79);
 
         internal static readonly Color Accent = Color.FromArgb(0x4C, 0x8D, 0xFF);
+        internal static readonly Color Violet = Color.FromArgb(0xB1, 0x5C, 0xFF);   // doar in aura
         internal static readonly Color AccentHover = Color.FromArgb(0x6B, 0xA2, 0xFF);
         internal static readonly Color AccentInk = Color.FromArgb(0x06, 0x10, 0x1F);
 
@@ -120,6 +121,62 @@ namespace CursorSelector
         private static readonly string[] BodyStack = { "IBM Plex Sans", "Segoe UI" };
         private static readonly string[] MonoStack = { "IBM Plex Mono", "Cascadia Mono", "Consolas" };
 
+        /// <summary>
+        /// Fonturile marcii, inglobate in executabil (vezi build.cmd): pe o masina straina nu e
+        /// instalat nici Bricolage, nici IBM Plex, deci fara ele aplicatia cadea pe Segoe UI si
+        /// arata ca orice alt program WinForms.
+        ///
+        /// Se incarca de doua ori, fiindca cele doua motoare de text ale Windows-ului au fiecare
+        /// lista lui: PrivateFontCollection pentru GDI+ (de acolo vin obiectele Font), iar
+        /// AddFontMemResourceEx pentru GDI, pe care il foloseste TextRenderer - fara a doua
+        /// inregistrare, tot ce deseneaza TextRenderer ar reveni la fontul implicit. Memoria ramane
+        /// alocata cat traieste procesul: fonturile se citesc din ea la fiecare desenare.
+        /// </summary>
+        private static class Embedded
+        {
+            [DllImport("gdi32.dll", ExactSpelling = true)]
+            private static extern IntPtr AddFontMemResourceEx(IntPtr font, uint size, IntPtr reserved, out uint count);
+
+            private static readonly System.Drawing.Text.PrivateFontCollection Collection = Load();
+
+            private static System.Drawing.Text.PrivateFontCollection Load()
+            {
+                var collection = new System.Drawing.Text.PrivateFontCollection();
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                foreach (var name in assembly.GetManifestResourceNames())
+                {
+                    if (!name.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase)) continue;
+                    using (var stream = assembly.GetManifestResourceStream(name))
+                    {
+                        var bytes = new byte[stream.Length];
+                        int read = 0;
+                        while (read < bytes.Length)
+                        {
+                            int got = stream.Read(bytes, read, bytes.Length - read);
+                            if (got <= 0) break;
+                            read += got;
+                        }
+                        if (read != bytes.Length) continue;
+
+                        IntPtr buffer = Marshal.AllocCoTaskMem(bytes.Length);
+                        Marshal.Copy(bytes, 0, buffer, bytes.Length);
+                        collection.AddMemoryFont(buffer, bytes.Length);
+                        uint installed;
+                        AddFontMemResourceEx(buffer, (uint)bytes.Length, IntPtr.Zero, out installed);
+                    }
+                }
+                return collection;
+            }
+
+            internal static FontFamily Find(string name, FontStyle style)
+            {
+                foreach (var family in Collection.Families)
+                    if (string.Equals(family.Name, name, StringComparison.OrdinalIgnoreCase)
+                        && family.IsStyleAvailable(style)) return family;
+                return null;
+            }
+        }
+
         private static readonly HashSet<string> Installed = LoadInstalledFamilies();
 
         private static HashSet<string> LoadInstalledFamilies()
@@ -133,7 +190,12 @@ namespace CursorSelector
         private static Font Pick(string[] stack, float size, FontStyle style)
         {
             foreach (var name in stack)
+            {
+                var embedded = Embedded.Find(name, style);
+                if (embedded != null) return new Font(embedded, size, style);
+                // Instalata de utilizator: o preferam inaintea urmatoarei din teanc, nu a celei inglobate.
                 if (Installed.Contains(name)) return new Font(name, size, style);
+            }
             return new Font(FontFamily.GenericSansSerif, size, style);
         }
 
@@ -164,6 +226,36 @@ namespace CursorSelector
             using (var path = RoundedPath(r, radius))
             using (var brush = new SolidBrush(color))
                 g.FillPath(brush, path);
+        }
+
+        /// <summary>
+        /// Aura din identitate: doua pete radiale discrete in spatele continutului (accent
+        /// stanga-sus, violet dreapta-sus). Nota zice ca daca se observa ca forma, e prea tare.
+        /// </summary>
+        internal static void DrawAura(Graphics g, Rectangle area)
+        {
+            Blob(g, area, 0.22f, -0.04f, 0.58f, 0.52f, Accent, 46);
+            Blob(g, area, 0.80f, 0.04f, 0.46f, 0.44f, Violet, 30);
+        }
+
+        private static void Blob(Graphics g, Rectangle area, float cx, float cy, float rx, float ry, Color color, int alpha)
+        {
+            var box = new Rectangle(
+                area.X + (int)(area.Width * (cx - rx)), area.Y + (int)(area.Height * (cy - ry)),
+                (int)(area.Width * rx * 2), (int)(area.Height * ry * 2));
+            if (box.Width <= 0 || box.Height <= 0) return;
+            using (var path = new GraphicsPath())
+            {
+                path.AddEllipse(box);
+                using (var brush = new PathGradientBrush(path))
+                {
+                    brush.CenterColor = Color.FromArgb(alpha, color);
+                    brush.SurroundColors = new[] { Color.FromArgb(0, color) };
+                    // Fara asta centrul e o minge compacta, nu o lumina care se stinge.
+                    brush.FocusScales = new PointF(0.1f, 0.1f);
+                    g.FillPath(brush, path);
+                }
+            }
         }
 
         internal static void DrawRounded(Graphics g, Rectangle r, int radius, Color color)
@@ -378,7 +470,8 @@ namespace CursorSelector
         internal Rail(string label)
         {
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint
-                   | ControlStyles.UserPaint, true);
+                   | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
             Text = label.ToUpperInvariant();
             Height = 24;
         }
@@ -416,7 +509,8 @@ namespace CursorSelector
         internal TrackedLabel()
         {
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint
-                   | ControlStyles.UserPaint, true);
+                   | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
         }
 
         protected override void OnTextChanged(EventArgs e) { Invalidate(); base.OnTextChanged(e); }
@@ -480,6 +574,15 @@ namespace CursorSelector
         {
             get { var cp = base.CreateParams; cp.ExStyle |= 0x02000000; return cp; }
         }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            e.Graphics.Clear(Theme.Ground);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Theme.DrawAura(e.Graphics, new Rectangle(0, 0, Width, Height / 2));
+        }
+
+        protected override void OnResize(EventArgs e) { Invalidate(); base.OnResize(e); }
     }
 
     internal sealed class Scheme
@@ -1140,7 +1243,6 @@ namespace CursorSelector
             _title.Font = Theme.FontDisplay;
             _title.Ink = Theme.Text;
             _title.Tracking = -0.4f;               // -0.02em la 15pt
-            _title.BackColor = Theme.Ground;
 
             _subtitle.Dock = DockStyle.Top;
             _subtitle.Height = 28;
@@ -1150,7 +1252,7 @@ namespace CursorSelector
             _subtitle.AutoSize = false;
             _subtitle.AutoEllipsis = true;
 
-            var rail = new Rail("Cursor roles") { Dock = DockStyle.Top, BackColor = Theme.Ground };
+            var rail = new Rail("Cursor roles") { Dock = DockStyle.Top };
 
             _flow.Dock = DockStyle.Fill;
             _flow.AutoScroll = true;
@@ -1161,7 +1263,7 @@ namespace CursorSelector
             {
                 Dock = DockStyle.Bottom,
                 Height = 68,
-                BackColor = Theme.Ground
+                BackColor = Color.Transparent
             };
 
             // Pilula butonului principal e retrasa cu 7px in interiorul controlului, ca sa aiba loc
