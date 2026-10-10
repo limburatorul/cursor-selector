@@ -66,6 +66,10 @@ namespace CursorSelector
             catch (DllNotFoundException) { }
         }
 
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        internal static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr w, string l);
+        internal const uint EM_SETCUEBANNER = 0x1501;
+
         internal const uint SPI_SETCURSORS = 0x0057;
         internal const uint SPIF_UPDATEINIFILE_SENDCHANGE = 0x03;
         internal const int DI_NORMAL = 0x0003;
@@ -200,6 +204,7 @@ namespace CursorSelector
         }
 
         internal static readonly Font FontDisplay = Pick(DisplayStack, 18F, FontStyle.Bold);
+        internal static readonly Font FontBrand = Pick(DisplayStack, 11.5F, FontStyle.Bold);
         internal static readonly Font FontBody = Pick(BodyStack, 10F, FontStyle.Regular);
         internal static readonly Font FontSmall = Pick(BodyStack, 9F, FontStyle.Regular);
         internal static readonly Font FontButton = Pick(BodyStack, 10F, FontStyle.Regular);
@@ -542,19 +547,46 @@ namespace CursorSelector
     /// <summary>Zona de continut: card cu colturi rotunjite, cu derulare.</summary>
     internal sealed class CardPanel : FlowLayoutPanel
     {
+        /// <summary>Ce scrie in card cand nu e nimic de aratat; null cat timp sunt placi.</summary>
+        internal string EmptyMessage;
+        internal string EmptyHint;
+
         internal CardPanel()
         {
             DoubleBuffered = true;
             BackColor = Theme.Ground;
         }
 
+        internal void SetEmpty(string message, string hint)
+        {
+            EmptyMessage = message;
+            EmptyHint = hint;
+            foreach (Control child in Controls) child.Visible = message == null;
+            Invalidate();
+        }
+
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            e.Graphics.Clear(Theme.Ground);
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            var g = e.Graphics;
+            g.Clear(Theme.Ground);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
             var r = new Rectangle(0, 0, Width - 1, Height - 1);
-            Theme.FillRounded(e.Graphics, r, Theme.RadiusLarge, Theme.Panel);
-            Theme.DrawRounded(e.Graphics, r, Theme.RadiusLarge, Theme.Edge);
+            Theme.FillRounded(g, r, Theme.RadiusLarge, Theme.Panel);
+            Theme.DrawRounded(g, r, Theme.RadiusLarge, Theme.Edge);
+            if (EmptyMessage == null) return;
+
+            // Chenar punctat: acelasi semn ca pe web pentru "lasa ceva aici".
+            var drop = new Rectangle(r.X + 40, r.Y + 40, r.Width - 80, r.Height - 80);
+            using (var pen = new Pen(Theme.Edge, 1.4f) { DashStyle = DashStyle.Dash, DashPattern = new[] { 6f, 5f } })
+            using (var path = Theme.RoundedPath(drop, Theme.RadiusLarge))
+                g.DrawPath(pen, path);
+
+            var middle = new Rectangle(drop.X, drop.Y + drop.Height / 2 - 40, drop.Width, 40);
+            TextRenderer.DrawText(g, EmptyMessage, Theme.FontDisplay, middle, Theme.Text,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.Bottom);
+            TextRenderer.DrawText(g, EmptyHint, Theme.FontBody,
+                new Rectangle(drop.X, middle.Bottom + 10, drop.Width, 28), Theme.Dim,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.Top);
         }
     }
 
@@ -563,6 +595,164 @@ namespace CursorSelector
     /// deci stergerea de dinainte era doar un cadru gol vizibil (flicker). Umplem doar zona de sub
     /// ultimul rand, pe care nu o picteaza nimeni altcineva.
     /// </summary>
+    /// <summary>
+    /// Campul de cautare: un TextBox fara chenar, asezat intr-un panou care deseneaza pastila si
+    /// lupa. Un TextBox nu poate avea coltul rotunjit, iar chenarul lui de sistem e singurul
+    /// dreptunghi palid dintr-o bara altfel intunecata.
+    /// </summary>
+    /// <summary>
+    /// Meniul de context, in paleta aplicatiei. ToolStrip-ul de sistem vine alb, iar nota de
+    /// branding spune ca un control nativ nestilizat e cel mai vizibil loc unde se rupe tema.
+    /// </summary>
+    /// <summary>
+    /// Antetul barei: semnul aplicatiei, numele si versiunea. Fereastra nu spunea nicaieri
+    /// al cui produs e - in afara de bara de titlu a Windows-ului.
+    /// </summary>
+    internal sealed class BrandHead : Control
+    {
+        internal const string Version = "1.1.0";
+
+        internal BrandHead()
+        {
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint
+                   | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+            Height = 46;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Theme.Ground2);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            // Patratul marcii, cu sageata aplicatiei in el: aceeasi silueta ca iconita si ca pagina.
+            var mark = new Rectangle(0, (Height - 30) / 2, 30, 30);
+            Theme.FillRounded(g, mark, 9, Theme.Panel2);
+            Theme.DrawRounded(g, mark, 9, Theme.Edge);
+            using (var path = new GraphicsPath())
+            {
+                PointF[] arrow =
+                {
+                    new PointF(0.34f, 0.20f), new PointF(0.34f, 0.80f), new PointF(0.49f, 0.65f),
+                    new PointF(0.58f, 0.86f), new PointF(0.68f, 0.82f), new PointF(0.59f, 0.61f),
+                    new PointF(0.78f, 0.61f)
+                };
+                var points = new PointF[arrow.Length];
+                for (int i = 0; i < arrow.Length; i++)
+                    points[i] = new PointF(mark.X + arrow[i].X * mark.Width, mark.Y + arrow[i].Y * mark.Height);
+                path.AddPolygon(points);
+                using (var fill = new SolidBrush(Theme.Text))
+                using (var pen = new Pen(Theme.Accent, 1.4f) { LineJoin = LineJoin.Round })
+                {
+                    g.FillPath(fill, path);
+                    g.DrawPath(pen, path);
+                }
+            }
+
+            int line = Theme.LineHeight(g, Theme.FontBrand);
+            TextRenderer.DrawText(g, "Cursor Selector", Theme.FontBrand,
+                new Point(mark.Right + 12, Height / 2 - line + 2), Theme.Text, TextFormatFlags.NoPadding);
+            Theme.DrawTracked(g, Version, Theme.FontBadge,
+                new Point(mark.Right + 13, Height / 2 + 3), Theme.Dimmer, 0.8f);
+        }
+    }
+
+    internal sealed class DarkMenu : ToolStripRenderer
+    {
+        internal static ContextMenuStrip Build()
+        {
+            var menu = new ContextMenuStrip
+            {
+                Renderer = new DarkMenu(),
+                BackColor = Theme.Ground2,
+                ForeColor = Theme.Text,
+                Font = Theme.FontBody,
+                ShowImageMargin = false
+            };
+            return menu;
+        }
+
+        protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+        {
+            e.Graphics.Clear(Theme.Ground2);
+        }
+
+        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Theme.DrawRounded(e.Graphics, new Rectangle(0, 0, e.AffectedBounds.Width - 1,
+                e.AffectedBounds.Height - 1), 10, Theme.Edge);
+        }
+
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            if (!e.Item.Selected || !e.Item.Enabled) return;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Theme.FillRounded(e.Graphics, new Rectangle(3, 0, e.Item.Width - 6, e.Item.Height - 1), 8, Theme.SelectedRow);
+        }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = e.Item.Enabled ? Theme.Text : Theme.Dimmer;
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+        {
+            using (var pen = new Pen(Theme.Edge))
+                e.Graphics.DrawLine(pen, 8, e.Item.Height / 2, e.Item.Width - 8, e.Item.Height / 2);
+        }
+    }
+
+    internal sealed class SearchBox : Panel
+    {
+        internal readonly TextBox Field = new TextBox();
+
+        internal SearchBox()
+        {
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint
+                   | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+            Height = 36;
+            BackColor = Theme.Ground2;
+
+            Field.BorderStyle = BorderStyle.None;
+            Field.BackColor = Theme.Panel;
+            Field.ForeColor = Theme.Text;
+            Field.Font = Theme.FontBody;
+            Field.HandleCreated += delegate
+            {
+                Native.SendMessage(Field.Handle, Native.EM_SETCUEBANNER, (IntPtr)1, "Search schemes");
+                Native.SetWindowTheme(Field.Handle, "DarkMode_CFD", null);
+            };
+            Controls.Add(Field);
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            int height = Field.PreferredHeight;
+            Field.SetBounds(38, (Height - height) / 2, Math.Max(10, Width - 50), height);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Theme.Ground2);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            var box = new Rectangle(0, 0, Width - 1, Height - 1);
+            Theme.FillRounded(g, box, Height / 2, Theme.Panel);
+            Theme.DrawRounded(g, box, Height / 2, Field.Focused ? Theme.Accent : Theme.Edge);
+
+            using (var pen = new Pen(Field.Focused ? Theme.Dim : Theme.Dimmer, 1.6f))
+            {
+                var lens = new Rectangle(15, Height / 2 - 6, 11, 11);
+                g.DrawEllipse(pen, lens);
+                g.DrawLine(pen, lens.Right - 2, lens.Bottom - 2, lens.Right + 2, lens.Bottom + 2);
+            }
+        }
+    }
+
     internal sealed class SchemeList : ListBox
     {
         protected override void WndProc(ref Message m)
@@ -1119,11 +1309,17 @@ namespace CursorSelector
         private readonly FlatButton _apply = new FlatButton("Apply selected scheme", true);
         private readonly FlatButton _restore = new FlatButton("Restore saved cursors", false);
         private readonly Timer _timer = new Timer();
+        private readonly Timer _confirm = new Timer();
 
         private readonly Dictionary<string, RoleTile> _tiles = new Dictionary<string, RoleTile>(StringComparer.Ordinal);
         private List<IntPtr> _liveHandles = new List<IntPtr>();
         private int _hoverIndex = -1;
         private string _activeName = "";
+        private readonly SearchBox _searchBox = new SearchBox();
+        private readonly TextBox _search;
+        private readonly List<Scheme> _schemes = new List<Scheme>();
+        private readonly Dictionary<string, IntPtr> _thumbs = new Dictionary<string, IntPtr>(StringComparer.Ordinal);
+        private int _firstSystem = -1;
 
         internal MainForm()
         {
@@ -1131,6 +1327,8 @@ namespace CursorSelector
             _libraryDir = Path.Combine(root, "Library");
             _backupFile = Path.Combine(root, "backup.json");
             if (!Directory.Exists(_libraryDir)) Directory.CreateDirectory(_libraryDir);
+
+            _search = _searchBox.Field;
 
             Text = "Cursor Selector";
             Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -1144,6 +1342,14 @@ namespace CursorSelector
             BuildRightPanel();
             BuildTiles();
 
+            _confirm.Interval = 3000;
+            _confirm.Tick += delegate
+            {
+                _confirm.Stop();
+                _status.ForeColor = Theme.Dim;
+                _status.Text = "Active:  " + _activeName;
+            };
+
             _timer.Interval = 90;
             _timer.Tick += delegate
             {
@@ -1154,11 +1360,18 @@ namespace CursorSelector
             // controalele copil, asa ca le legam pe fiecare.
             EnableDrop(this);
 
+            KeyPreview = true;
+            KeyDown += delegate(object sender, KeyEventArgs e)
+            {
+                if (e.Control && e.KeyCode == Keys.F) { _search.Focus(); _search.SelectAll(); e.Handled = true; }
+            };
+
             Shown += delegate { RefreshList(null); _timer.Start(); };
             FormClosed += delegate
             {
                 _timer.Stop();
                 foreach (var h in _liveHandles) Native.DestroyCursor(h);
+                foreach (var h in _thumbs.Values) if (h != IntPtr.Zero) Native.DestroyCursor(h);
             };
         }
 
@@ -1178,6 +1391,64 @@ namespace CursorSelector
             Native.DwmSetWindowAttribute(Handle, 34, ref border, sizeof(int));
         }
 
+        /// <summary>Click dreapta pe o schema: arata fisierele ei, sau o scoate din biblioteca.</summary>
+        private void BuildListMenu()
+        {
+            var menu = DarkMenu.Build();
+            var show = new ToolStripMenuItem("Show the files");
+            var remove = new ToolStripMenuItem("Remove from library\u2026");
+            menu.Items.Add(show);
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(remove);
+
+            menu.Opening += delegate(object sender, System.ComponentModel.CancelEventArgs e)
+            {
+                var scheme = _list.SelectedItem as Scheme;
+                if (scheme == null) { e.Cancel = true; return; }
+                show.Enabled = scheme.Location != null && Directory.Exists(scheme.Location);
+                // Stergem doar ce am copiat noi; o schema inregistrata in Windows nu e a noastra.
+                remove.Enabled = scheme.FromLibrary;
+            };
+
+            show.Click += delegate
+            {
+                var scheme = _list.SelectedItem as Scheme;
+                if (scheme != null) System.Diagnostics.Process.Start("explorer.exe", scheme.Location);
+            };
+
+            remove.Click += delegate
+            {
+                var scheme = _list.SelectedItem as Scheme;
+                if (scheme == null || !scheme.FromLibrary) return;
+                if (MessageBox.Show(this,
+                        "Delete the folder\n" + scheme.Location + "\n\nThe cursor files in it go to the Recycle Bin.",
+                        "Remove " + scheme.Name, MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK)
+                    return;
+                try
+                {
+                    // In Cos, nu definitiv: un pachet sters din greseala se poate pune la loc.
+                    Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(scheme.Location,
+                        Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                        Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "Could not remove it:\n" + ex.Message,
+                        "Cursor Selector", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                RefreshList(null);
+            };
+
+            // Click dreapta muta si selectia, altfel meniul ar lucra pe alt rand decat cel aratat.
+            _list.MouseDown += delegate(object sender, MouseEventArgs e)
+            {
+                if (e.Button != MouseButtons.Right) return;
+                int index = _list.IndexFromPoint(e.Location);
+                if (index >= 0 && index < _list.Items.Count) _list.SelectedIndex = index;
+            };
+            _list.ContextMenuStrip = menu;
+        }
+
         private void BuildLeftPanel()
         {
             var left = new Panel
@@ -1189,7 +1460,12 @@ namespace CursorSelector
             };
 
             _list.Dock = DockStyle.Fill;
-            _list.DrawMode = DrawMode.OwnerDrawFixed;
+            // Variabila, fiindca primul rand de sistem isi poarta deasupra propriul antet de sectiune.
+            _list.DrawMode = DrawMode.OwnerDrawVariable;
+            _list.MeasureItem += delegate(object sender, MeasureItemEventArgs e)
+            {
+                e.ItemHeight = e.Index == _firstSystem && _firstSystem > 0 ? 40 + SectionHead : 40;
+            };
             _list.ItemHeight = 40;
             _list.IntegralHeight = false;
             _list.BorderStyle = BorderStyle.None;
@@ -1206,8 +1482,30 @@ namespace CursorSelector
                 if (_hoverIndex != -1) { int old = _hoverIndex; _hoverIndex = -1; InvalidateRow(old); }
             };
             _list.HandleCreated += delegate { Native.SetWindowTheme(_list.Handle, "DarkMode_Explorer", null); };
+            BuildListMenu();
 
             var head = new Rail("Library") { Dock = DockStyle.Top, BackColor = Theme.Ground2 };
+            var brand = new BrandHead { Dock = DockStyle.Top };
+
+            // Cautare: 43 de scheme nu se mai parcurg cu ochiul.
+            _searchBox.Dock = DockStyle.Top;
+            _search.TextChanged += delegate { FillList(null); };
+            _search.GotFocus += delegate { _searchBox.Invalidate(); };
+            _search.LostFocus += delegate { _searchBox.Invalidate(); };
+            _search.KeyDown += delegate(object sender, KeyEventArgs e)
+            {
+                // Sageata jos si Enter trec in lista, ca sa nu fie nevoie de mouse intre cautare si rezultat.
+                if (e.KeyCode == Keys.Down || e.KeyCode == Keys.Enter)
+                {
+                    _list.Focus();
+                    e.Handled = e.SuppressKeyPress = true;
+                }
+                else if (e.KeyCode == Keys.Escape && _search.Text.Length > 0)
+                {
+                    _search.Clear();
+                    e.Handled = e.SuppressKeyPress = true;
+                }
+            };
 
             _count.Dock = DockStyle.Top;
             _count.Height = 28;
@@ -1272,8 +1570,10 @@ namespace CursorSelector
 
             // Controlul cu Dock=Fill trebuie sa fie in fata, ca sa primeasca spatiul ramas.
             left.Controls.Add(_list);
+            left.Controls.Add(_searchBox);
             left.Controls.Add(_count);
             left.Controls.Add(head);
+            left.Controls.Add(brand);
             left.Controls.Add(buttons);
             _list.BringToFront();
             Controls.Add(left);
@@ -1308,6 +1608,8 @@ namespace CursorSelector
             }
         }
 
+        private const int SectionHead = 26;
+
         private void DrawSchemeRow(Graphics g, DrawItemEventArgs e)
         {
             var scheme = (Scheme)_list.Items[e.Index];
@@ -1316,7 +1618,21 @@ namespace CursorSelector
                 g.FillRectangle(background, e.Bounds);
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            var r = new Rectangle(e.Bounds.X, e.Bounds.Y + 2, e.Bounds.Width - 6, e.Bounds.Height - 4);
+            var bounds = e.Bounds;
+            if (e.Index == _firstSystem && _firstSystem > 0)
+            {
+                // Un singur antet acolo unde se termina biblioteca, in locul etichetei repetate
+                // pe fiecare rand: 28 de pastile "LIBRARY" erau cel mai zgomotos lucru din bara.
+                var head = new Rectangle(bounds.X + 12, bounds.Y + 8, bounds.Width - 24, SectionHead - 10);
+                Theme.DrawTracked(g, "INSTALLED IN WINDOWS", Theme.FontBadge,
+                    new Point(head.X, head.Y), Theme.Dimmer, 1.1f);
+                int line = head.X + Theme.MeasureTracked(g, "INSTALLED IN WINDOWS", Theme.FontBadge, 1.1f) + 10;
+                using (var pen = new Pen(Theme.Edge))
+                    if (line < head.Right) g.DrawLine(pen, line, head.Y + 5, head.Right, head.Y + 5);
+                bounds = new Rectangle(bounds.X, bounds.Y + SectionHead, bounds.Width, bounds.Height - SectionHead);
+            }
+
+            var r = new Rectangle(bounds.X, bounds.Y + 2, bounds.Width - 6, bounds.Height - 4);
             bool selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
 
             if (selected)
@@ -1333,26 +1649,55 @@ namespace CursorSelector
                 Theme.FillRounded(g, r, 10, Theme.PanelOnSide);
             }
 
-            const float tracking = 0.9f;
-            string badgeText = scheme.SourceLabel.ToUpperInvariant();
-            int badgeWidth = Theme.MeasureTracked(g, badgeText, Theme.FontBadge, tracking);
-            int badgeHeight = Theme.LineHeight(g, Theme.FontBadge);
-            var badge = new Rectangle(r.Right - badgeWidth - 20, r.Y + (r.Height - badgeHeight - 6) / 2,
-                                      badgeWidth + 15, badgeHeight + 6);
-            Theme.DrawRounded(g, badge, badge.Height / 2,
-                scheme.FromLibrary ? Color.FromArgb(150, Theme.Accent) : Theme.EdgeBright);
-            Theme.DrawTracked(g, badgeText, Theme.FontBadge, new Point(badge.X + 7, badge.Y + 3),
-                scheme.FromLibrary ? Theme.Accent : Theme.Dim, tracking);
+            // Sageata schemei, desenata in rand: un nume spune mult mai putin decat cursorul insusi.
+            var chip = new Rectangle(r.X + 10, r.Y + (r.Height - 26) / 2, 26, 26);
+            IntPtr thumb = Thumb(scheme);
+            Theme.FillRounded(g, chip, 8, thumb == IntPtr.Zero ? Theme.SwatchEmpty : Theme.Swatch);
+            if (thumb != IntPtr.Zero)
+            {
+                g.SmoothingMode = SmoothingMode.Default;
+                IntPtr hdc = g.GetHdc();
+                Native.DrawIconEx(hdc, chip.X + 4, chip.Y + 4, thumb, 18, 18, 0, IntPtr.Zero, Native.DI_NORMAL);
+                g.ReleaseHdc(hdc);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+            }
 
-            // Schema aplicata acum: punct de accent in fata numelui, acelasi semn ca in rail.
+            int right = r.Right - 12;
             if (scheme.Name == _activeName)
-                using (var brush = new SolidBrush(Theme.Accent))
-                    g.FillEllipse(brush, r.X + 10, r.Y + r.Height / 2 - 3, 6, 6);
+            {
+                // Schema aplicata acum: pastila "ACTIVE", singura eticheta ramasa in lista.
+                const float tracking = 0.9f;
+                int width = Theme.MeasureTracked(g, "ACTIVE", Theme.FontBadge, tracking);
+                int height = Theme.LineHeight(g, Theme.FontBadge);
+                var badge = new Rectangle(right - width - 15, r.Y + (r.Height - height - 6) / 2, width + 15, height + 6);
+                Theme.FillRounded(g, badge, badge.Height / 2, Theme.Accent);
+                Theme.DrawTracked(g, "ACTIVE", Theme.FontBadge, new Point(badge.X + 7, badge.Y + 3), Theme.AccentInk, tracking);
+                right = badge.X - 8;
+            }
 
-            var nameRect = new Rectangle(r.X + 24, r.Y, badge.X - r.X - 30, r.Height);
-            TextRenderer.DrawText(g, scheme.Name, Theme.FontBody, nameRect,
-                Theme.Text,
+            var nameRect = new Rectangle(chip.Right + 12, r.Y, right - chip.Right - 12, r.Height);
+            TextRenderer.DrawText(g, scheme.Name, Theme.FontBody, nameRect, Theme.Text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        }
+
+        /// <summary>
+        /// Sageata unei scheme, incarcata o singura data si tinuta cat traieste fereastra: zeci de
+        /// randuri ar reincarca acelasi fisier la fiecare redesenare a listei.
+        /// </summary>
+        private IntPtr Thumb(Scheme scheme)
+        {
+            IntPtr handle;
+            if (_thumbs.TryGetValue(scheme.Name, out handle)) return handle;
+
+            string path;
+            handle = IntPtr.Zero;
+            if (scheme.Map.TryGetValue("Arrow", out path) && !string.IsNullOrEmpty(path) && File.Exists(path))
+            {
+                handle = Native.LoadImage(IntPtr.Zero, path, Native.IMAGE_CURSOR, 32, 32, Native.LR_LOADFROMFILE);
+                if (handle == IntPtr.Zero) handle = Native.LoadCursorFromFile(path);
+            }
+            _thumbs[scheme.Name] = handle;
+            return handle;
         }
 
         private void BuildRightPanel()
@@ -1484,6 +1829,7 @@ namespace CursorSelector
 
         private void ShowScheme(Scheme scheme)
         {
+            UpdateApplyState();
             var previous = _liveHandles;
             var current = new List<IntPtr>();
 
@@ -1527,26 +1873,51 @@ namespace CursorSelector
         /// <summary>Reciteste biblioteca; selecteaza schema din <paramref name="location"/> daca e data.</summary>
         private void RefreshList(string location)
         {
+            foreach (var handle in _thumbs.Values) if (handle != IntPtr.Zero) Native.DestroyCursor(handle);
+            _thumbs.Clear();
+
+            _schemes.Clear();
+            _schemes.AddRange(Library.GetAll(_libraryDir));
+            int library = _schemes.Count(s => s.FromLibrary);
+            _count.Text = string.Format("{0} schemes  \u00b7  {1} library  \u00b7  {2} system",
+                _schemes.Count, library, _schemes.Count - library);
+
+            FillList(location);
+            SetActive(CursorConfig.ActiveName());
+            _restore.Enabled = File.Exists(_backupFile);
+        }
+
+        /// <summary>Umple lista cu schemele care trec de filtrul de cautare, pastrand selectia.</summary>
+        private void FillList(string location)
+        {
             var previous = _list.SelectedItem as Scheme;
             string previousName = previous == null ? null : previous.Name;
+            string query = _search.Text.Trim();
 
             _list.BeginUpdate();
             _list.Items.Clear();
-            int library = 0;
-            foreach (var scheme in Library.GetAll(_libraryDir))
+            _firstSystem = -1;
+            foreach (var scheme in _schemes)
             {
+                if (query.Length > 0 && scheme.Name.IndexOf(query, StringComparison.CurrentCultureIgnoreCase) < 0)
+                    continue;
+                if (!scheme.FromLibrary && _firstSystem < 0) _firstSystem = _list.Items.Count;
                 _list.Items.Add(scheme);
-                if (scheme.FromLibrary) library++;
             }
             _list.EndUpdate();
             Native.SetWindowTheme(_list.Handle, "DarkMode_Explorer", null);
 
-            _count.Text = string.Format("{0} schemes  \u00b7  {1} library  \u00b7  {2} system",
-                _list.Items.Count, library, _list.Items.Count - library);
-            SetActive(CursorConfig.ActiveName());
-            _restore.Enabled = File.Exists(_backupFile);
-
-            if (_list.Items.Count == 0) { ShowScheme(null); return; }
+            if (_list.Items.Count == 0)
+            {
+                _flow.SetEmpty(
+                    _schemes.Count == 0 ? "No schemes yet" : "Nothing matches that",
+                    _schemes.Count == 0
+                        ? "Drop a cursor folder or a .zip here, or use Import and apply."
+                        : "Try part of a scheme's name, or clear the search.");
+                ShowScheme(null);
+                return;
+            }
+            _flow.SetEmpty(null, null);
 
             int index = 0;
             for (int i = 0; i < _list.Items.Count; i++)
@@ -1558,6 +1929,7 @@ namespace CursorSelector
                 { index = i; break; }
             }
             _list.SelectedIndex = index;
+            ShowScheme(_list.SelectedItem as Scheme);
         }
 
         private void SetActive(string name)
@@ -1565,6 +1937,31 @@ namespace CursorSelector
             _activeName = name;
             _status.Text = "Active:  " + name;
             _list.Invalidate();
+            UpdateApplyState();
+        }
+
+        /// <summary>
+        /// Butonul principal nu mai cheama la o actiune care nu schimba nimic: cand schema aleasa
+        /// e chiar cea pusa, spune asta si se stinge.
+        /// </summary>
+        private void UpdateApplyState()
+        {
+            var scheme = _list.SelectedItem as Scheme;
+            bool applied = scheme != null && scheme.Name == _activeName;
+            _apply.Text = applied ? "Already applied" : "Apply selected scheme";
+            _apply.Enabled = scheme != null && !applied;
+        }
+
+        /// <summary>
+        /// Confirmarea sta trei secunde in bara de jos, apoi randul revine la schema activa:
+        /// pana aici, singurul semn ca s-a aplicat ceva era ca textul din colt se schimba.
+        /// </summary>
+        private void Confirm(string message)
+        {
+            _status.ForeColor = Theme.Accent;
+            _status.Text = message;
+            _confirm.Stop();
+            _confirm.Start();
         }
 
         private void OnApply(object sender, EventArgs e)
@@ -1575,6 +1972,7 @@ namespace CursorSelector
             {
                 CursorConfig.Apply(scheme, _backupFile);
                 SetActive(scheme.Name);
+                Confirm("Applied to Windows");
             }
             catch (Exception ex)
             {
@@ -1591,6 +1989,7 @@ namespace CursorSelector
             {
                 CursorConfig.Restore(_backupFile);
                 SetActive(CursorConfig.ActiveName());
+                Confirm("Restored your saved cursors");
             }
             catch (Exception ex)
             {
