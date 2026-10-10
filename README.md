@@ -56,14 +56,21 @@ SizeAll, UpArrow, Hand, Pin, Person`.
 
 ## The client
 
-- **Left**: the schemes it found. The `Library` label means a folder in `Library\`; `System` means a
-  scheme already registered in Windows (Windows' own themes and packs installed through an `.inf`).
-- **Right**: the 17 roles, with the real cursor drawn at 48px. `.ani` cursors animate.
+- **Left**: the schemes it found, each with its own arrow drawn beside the name. Search the list with
+  the field above it (or `Ctrl+F`; `Down` moves into the list, `Esc` clears it). The schemes from
+  `Library\` come first; a single heading marks where the ones already registered in Windows begin
+  (Windows' own themes and packs installed through an `.inf`). Right-click a scheme to show its files
+  or to remove it from the library — removal goes to the Recycle Bin, and only for folders in
+  `Library\`.
+- **Right**: the 17 roles in five columns by job — pointing, writing, status, sizing, extras — with
+  the real cursor drawn at 52px, taken from the largest image inside the file. `.ani` cursors animate.
   Roles with no file appear dimmed, with `—`, and go back to the Windows default if you apply the
-  scheme. The tiles have a mid-grey background on purpose: it is the only shade on which both black
-  cursors (Capitaine, VS Cursors) and white ones (Windows Inverted) can be seen; on white or on
-  black some of them would disappear.
-- **Apply selected scheme**: writes the values to `HKCU\Control Panel\Cursors`, notifies the system
+  scheme. Each cursor sits on a mid-grey chip: it is the only shade on which both black cursors
+  (Capitaine, VS Cursors) and white ones (Windows Inverted) can be seen; on white or on black some of
+  them would disappear. Click a tile to see that cursor at 128px with its file name, size and frame
+  count.
+- **Apply selected scheme** (it reads *Already applied*, and goes quiet, when the chosen scheme is
+  the one in use): writes the values to `HKCU\Control Panel\Cursors`, notifies the system
   (`SPI_SETCURSORS`) and registers the scheme, so it also shows up in Windows' *Mouse Properties*.
   The effect is immediate, with no restart and no sign-out.
 - **Restore saved cursors**: goes back to the configuration from before the first apply.
@@ -72,7 +79,8 @@ SizeAll, UpArrow, Hand, Pin, Person`.
   does the same. The pack is copied into `Library\` (unpacked, without the wrapper folder from the
   archive), selected and applied on the spot, so the download can be deleted afterwards. A name that
   already exists in the library is reused, not overwritten.
-- The scheme applied right now has an accent dot in front of its name in the list.
+- The scheme applied right now carries an `ACTIVE` pill in the list, and applying or restoring is
+  confirmed for three seconds in the status line at the bottom right.
 
 The app's interface is in English. Everything can be reached from the keyboard: arrows to move
 through the list, `Tab` between buttons, `Space` or `Enter` to press, with a visible focus ring.
@@ -86,9 +94,14 @@ The interface follows the Protagonist Labs visual identity, with the same tokens
   the same over any background; here they are composited into opaque colours, because WinForms
   draws opaque controls and has no compositing layer under them.
 - **Typography by role**: display for the title, body for prose and buttons, mono for figures,
-  paths and labels. The stacks are `Bricolage Grotesque → Segoe UI`, `IBM Plex Sans → Segoe UI`,
-  `IBM Plex Mono → Cascadia Mono`: the first installed family wins, so if you install the fonts
-  themselves, the app picks them up with no change.
+  paths and labels. The faces are Bricolage Grotesque, IBM Plex Sans and IBM Plex Mono, and they
+  **travel inside the executable** (`fonts\`, embedded by `build.cmd`, OFL — licences beside them):
+  on a machine where none of them is installed, the app used to fall back to Segoe UI and looked
+  like any other WinForms program. A copy installed on the machine still wins over the embedded one.
+  They are registered twice at startup, once for GDI+ and once for GDI, because `TextRenderer` draws
+  through the second one and ignores fonts registered only with the first.
+- **Aura**: two faint radial pools behind the content, accent on the left and violet on the right,
+  the same shape the websites put behind their hero.
 - **Section rail**: an accent dot with a halo, an eyebrow label and a line that fades out to the
   right. GDI+ has no `letter-spacing`, so the labels are drawn character by character.
 - **Pill buttons**: the primary one with an accent background, `#06101f` text and a coloured halo;
@@ -115,6 +128,7 @@ Two things from the note can **not** be applied here:
 | `src\CursorSelector.cs` | the source code |
 | `build.cmd` | rebuilds the executable |
 | `app.ico` | the icon, embedded in the executable at build time |
+| `fonts\` | the brand's typefaces (OFL), embedded in the executable at build time, with their licences |
 
 Deleting a folder from `Library\` removes the scheme from the list. If that scheme was the one
 applied, Windows falls back to the default cursors for the missing files: use *Restore saved
