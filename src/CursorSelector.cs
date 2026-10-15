@@ -610,7 +610,7 @@ namespace CursorSelector
     /// </summary>
     internal sealed class BrandHead : Control
     {
-        internal const string Version = "1.2.0";
+        internal const string Version = "1.3.0";
 
         internal BrandHead()
         {
@@ -1310,6 +1310,8 @@ namespace CursorSelector
         private readonly FlatButton _restore = new FlatButton("Restore saved cursors", false);
         private readonly Timer _timer = new Timer();
         private readonly Timer _confirm = new Timer();
+        private readonly Timer _updates = new Timer { Interval = 5000 };
+        private bool _checking;
 
         private readonly Dictionary<string, RoleTile> _tiles = new Dictionary<string, RoleTile>(StringComparer.Ordinal);
         private List<IntPtr> _liveHandles = new List<IntPtr>();
@@ -1366,7 +1368,10 @@ namespace CursorSelector
                 if (e.Control && e.KeyCode == Keys.F) { _search.Focus(); _search.SelectAll(); e.Handled = true; }
             };
 
-            Shown += delegate { RefreshList(null); _timer.Start(); };
+            // Actualizarea: la cateva secunde dupa pornire, apoi la fiecare 6 ore cat sta deschisa.
+            _updates.Tick += delegate { _updates.Interval = 6 * 60 * 60 * 1000; CheckForUpdates(false); };
+
+            Shown += delegate { RefreshList(null); _timer.Start(); _updates.Start(); };
             FormClosed += delegate
             {
                 _timer.Stop();
@@ -1485,7 +1490,9 @@ namespace CursorSelector
             BuildListMenu();
 
             var head = new Rail("Library") { Dock = DockStyle.Top, BackColor = Theme.Ground2 };
-            var brand = new BrandHead { Dock = DockStyle.Top };
+            var brand = new BrandHead { Dock = DockStyle.Top, Cursor = Cursors.Hand };
+            new ToolTip().SetToolTip(brand, "Check for updates");
+            brand.Click += delegate { CheckForUpdates(true); };
 
             // Cautare: 43 de scheme nu se mai parcurg cu ochiul.
             _searchBox.Dock = DockStyle.Top;
@@ -1988,6 +1995,27 @@ namespace CursorSelector
         /// Confirmarea sta trei secunde in bara de jos, apoi randul revine la schema activa:
         /// pana aici, singurul semn ca s-a aplicat ceva era ca textul din colt se schimba.
         /// </summary>
+        /// <summary>
+        /// Pe un fir din pool: reteaua nu are voie sa blocheze fereastra. Verificarea automata tace cand nu
+        /// e nimic nou; cea ceruta (click pe versiune) raspunde mereu.
+        /// </summary>
+        private void CheckForUpdates(bool manual)
+        {
+            if (_checking) return;
+            _checking = true;
+            if (manual) Confirm("Checking for updates\u2026");
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                var waiting = Updater.UpdateInPlace();
+                BeginInvoke((Action)delegate
+                {
+                    _checking = false;
+                    if (waiting != null) Confirm("Updated to " + waiting + " \u2014 the next start opens it");
+                    else if (manual) Confirm("No newer version found (" + BrandHead.Version + ")");
+                });
+            });
+        }
+
         private void Confirm(string message)
         {
             _status.ForeColor = Theme.Accent;
@@ -2284,6 +2312,81 @@ namespace CursorSelector
                     + "&utm_source=cursorselector&utm_medium=app&utm_campaign=works-with"));
             }
             return offer;
+        }
+    }
+
+    /// <summary>
+    /// Actualizarea pe loc, ca la HotkeyScan: Cursor Selector e un singur .exe portabil, asa ca cel mai nou
+    /// CursorSelector.exe din release-ul GitHub se descarca langa cel care ruleaza, se verifica dupa marimea
+    /// si SHA-256-ul publicate de GitHub, si ia locul vechiului. Windows lasa un .exe pornit sa fie redenumit,
+    /// deci vechiul se da la o parte ca CursorSelector.exe.old (sters la pornirea urmatoare) si nimic nu se
+    /// inchide: urmatoarea pornire e versiunea noua. Un dosar in care nu putem scrie e lasat in pace.
+    /// </summary>
+    internal static class Updater
+    {
+        private const string Repo = "limburatorul/cursor-selector", Asset = "CursorSelector.exe";
+        private static Version _waiting;   // ce asteapta deja urmatoarea pornire; nu descarcam de doua ori
+
+        /// <summary>Versiunea care asteapta urmatoarea pornire, sau null cand n-a fost nimic de facut.</summary>
+        internal static Version UpdateInPlace()
+        {
+            if (_waiting != null) return _waiting;
+            string exe = Application.ExecutablePath;
+            // Redenumit de utilizator: nu e o copie pe care s-o putem inlocui.
+            if (!Path.GetFileName(exe).Equals(Asset, StringComparison.OrdinalIgnoreCase)) return null;
+            try { File.Delete(exe + ".old"); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+
+            string fresh = exe + ".new";
+            try
+            {
+                // Framework-ul vechi nu porneste singur cu TLS 1.2, iar GitHub nu primeste altceva.
+                System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12;
+                Dictionary<string, object> root;
+                using (var web = new System.Net.WebClient())
+                {
+                    web.Headers[System.Net.HttpRequestHeader.UserAgent] = "CursorSelector";
+                    root = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(
+                        web.DownloadString("https://api.github.com/repos/" + Repo + "/releases/latest"));
+                }
+                Version latest, current = new Version(BrandHead.Version);
+                if (!Version.TryParse(((root["tag_name"] as string) ?? "").TrimStart('v', 'V'), out latest) || latest <= current) return null;
+
+                var asset = ((System.Collections.IEnumerable)root["assets"]).OfType<Dictionary<string, object>>()
+                    .FirstOrDefault(a => Asset.Equals(a["name"]));
+                if (asset == null) return null;
+                object d;
+                string digest = asset.TryGetValue("digest", out d) ? d as string : null;
+                if (digest == null || !digest.StartsWith("sha256:")) return null;   // n-avem cu ce verifica: nu se ruleaza
+
+                using (var web = new System.Net.WebClient())
+                {
+                    web.Headers[System.Net.HttpRequestHeader.UserAgent] = "CursorSelector";
+                    web.DownloadFile((string)asset["browser_download_url"], fresh);
+                }
+
+                // Marimea prinde o descarcare taiata, checksum-ul restul; o copie diferita nu porneste niciodata.
+                if (new FileInfo(fresh).Length != Convert.ToInt64(asset["size"])) { File.Delete(fresh); return null; }
+                string hash;
+                using (var sha = new System.Security.Cryptography.SHA256Managed())
+                using (var file = File.OpenRead(fresh))
+                    hash = BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "");
+                if (!hash.Equals(digest.Substring(7), StringComparison.OrdinalIgnoreCase)) { File.Delete(fresh); return null; }
+
+                if (File.Exists(exe + ".old")) File.Delete(exe + ".old");
+                File.Move(exe, exe + ".old");
+                try { File.Move(fresh, exe); }
+                catch { File.Move(exe + ".old", exe); throw; }   // dosarul nu ramane niciodata fara .exe
+                return _waiting = latest;
+            }
+            catch (Exception ex)
+            {
+                // Offline, limita GitHub, un raspuns ciudat sau un dosar fara drept de scriere: data viitoare.
+                if (!(ex is System.Net.WebException || ex is IOException || ex is UnauthorizedAccessException
+                      || ex is ArgumentException || ex is InvalidOperationException || ex is KeyNotFoundException
+                      || ex is InvalidCastException || ex is FormatException)) throw;
+                try { File.Delete(fresh); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                return null;
+            }
         }
     }
 
