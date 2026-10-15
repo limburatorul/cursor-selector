@@ -610,7 +610,7 @@ namespace CursorSelector
     /// </summary>
     internal sealed class BrandHead : Control
     {
-        internal const string Version = "1.1.0";
+        internal const string Version = "1.2.0";
 
         internal BrandHead()
         {
@@ -1562,11 +1562,43 @@ namespace CursorSelector
             links.Links.Add(links.Text.IndexOf(mail), mail.Length, "mailto:" + mail + "?subject=Cursor%20Selector%20feedback");
             links.Links.Add(links.Text.IndexOf("Website"), 7, "https://protagonistlabs.app/cursorselector/?utm_source=cursorselector&utm_medium=app&utm_campaign=sidebar");
             links.Links.Add(links.Text.IndexOf(more), more.Length, "https://protagonistlabs.app/?utm_source=cursorselector&utm_medium=app&utm_campaign=more-apps");
-            links.LinkClicked += delegate(object s, LinkLabelLinkClickedEventArgs e)
+            LinkLabelLinkClickedEventHandler open = delegate(object s, LinkLabelLinkClickedEventArgs e)
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo((string)e.Link.LinkData) { UseShellExecute = true });
             };
+            links.LinkClicked += open;
             buttons.Controls.AddRange(new Control[] { dropHint, import, openLib, refresh, links });
+
+            // "Works with": nicio aplicatie sora nu adauga ceva aici, deci ramane doar randul cu
+            // reducerea, si numai pentru cine a cumparat deja una. In culoarea textului din jur, ca restul.
+            var offer = Ecosystem.Offer();
+            if (offer.Count > 0)
+            {
+                const string lead = "Owners of one of our apps get 30% off the others: ";
+                var others = new LinkLabel
+                {
+                    Text = lead + string.Join(" \u00b7 ", offer.Select(o => o.Key)),
+                    AutoSize = false,
+                    Size = new Size(312, 40),
+                    Margin = new Padding(0, 6, 0, 0),
+                    Font = Theme.FontSmall,
+                    ForeColor = Theme.Dim,
+                    LinkColor = Theme.Dim,
+                    ActiveLinkColor = Theme.Text,
+                    LinkBehavior = LinkBehavior.HoverUnderline,
+                    TextAlign = ContentAlignment.TopCenter
+                };
+                others.Links.Clear();
+                int at = lead.Length;
+                foreach (var o in offer)
+                {
+                    others.Links.Add(at, o.Key.Length, o.Value);
+                    at += o.Key.Length + 3;
+                }
+                others.LinkClicked += open;
+                buttons.Controls.Add(others);
+                buttons.Height += 46;
+            }
 
             // Controlul cu Dock=Fill trebuie sa fie in fata, ca sa primeasca spatiul ramas.
             left.Controls.Add(_list);
@@ -2154,6 +2186,107 @@ namespace CursorSelector
         }
     }
 
+    /// <summary>
+    /// Dosarul comun al aplicatiilor Protagonist Labs (%APPDATA%\ProtagonistLabs, contractul e in
+    /// Ecosistem.md din vault). Aplicatia isi scrie cartea in apps\cursorselector.json la fiecare
+    /// pornire si citeste cartile celorlalte doar pentru randul cu reducerea din bara. Datele ei raman
+    /// portabile, langa exe; doar cartea sta in AppData. Nimic de acolo nu e de incredere: un fisier
+    /// lipsa sau stricat e ca si cum n-ar exista, fara nicio eroare afisata.
+    /// </summary>
+    internal static class Ecosystem
+    {
+        private static readonly string Apps = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ProtagonistLabs", "apps");
+
+        private static readonly string[][] PaidApps =
+        {
+            new[] { "shelf", "Shelf" }, new[] { "stash", "Stash" }, new[] { "frostpane", "Frostpane" },
+            new[] { "reel", "Reel" }, new[] { "planner", "Planner" }, new[] { "reminder", "Reminder" },
+        };
+
+        /// <summary>Pe un fir din pool: un disc plin sau un fisier blocat nu are voie sa intarzie pornirea.</summary>
+        internal static void WriteCard()
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    var card = new Dictionary<string, object>
+                    {
+                        { "schema", 1 },
+                        { "updated", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") },
+                        { "id", "cursorselector" },
+                        { "name", "Cursor Selector" },
+                        { "version", BrandHead.Version },
+                        { "exe", Application.ExecutablePath },
+                        { "edition", "free" },
+                        { "paid", false },
+                        { "page", "https://protagonistlabs.app/cursorselector/" },
+                        { "commands", new Dictionary<string, object>() },
+                    };
+                    Directory.CreateDirectory(Apps);
+                    string path = Path.Combine(Apps, "cursorselector.json"), tmp = path + ".tmp";
+                    File.WriteAllText(tmp, new JavaScriptSerializer().Serialize(card), new System.Text.UTF8Encoding(false));
+                    if (File.Exists(path)) File.Replace(tmp, path, null);
+                    else File.Move(tmp, path);
+                }
+                catch (Exception ex)
+                {
+                    // Cartea e o politete fata de celelalte aplicatii; fara ea Cursor Selector merge la fel.
+                    if (!(ex is IOException || ex is UnauthorizedAccessException)) throw;
+                }
+            });
+        }
+
+        /// <summary>Cartea unei aplicatii instalate; null daca lipseste, e stricata sau exe-ul nu mai exista.</summary>
+        private static Dictionary<string, object> Read(string id)
+        {
+            try
+            {
+                var card = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(
+                    File.ReadAllText(Path.Combine(Apps, id + ".json")));
+                object schema, exe;
+                if (card == null || !card.TryGetValue("schema", out schema) || !(schema is int) || (int)schema != 1
+                    || !card.TryGetValue("exe", out exe) || !(exe is string) || !File.Exists((string)exe))
+                    return null;
+                return card;
+            }
+            catch (Exception ex)
+            {
+                if (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException
+                    || ex is InvalidOperationException) return null;
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Aplicatiile platite neinstalate (cel mult 4), fiecare cu pagina si codul ei de reducere - dar
+        /// numai cand utilizatorul a cumparat deja una (o carte cu paid si edition "full"). Altfel, nimic.
+        /// </summary>
+        internal static List<KeyValuePair<string, string>> Offer()
+        {
+            var offer = new List<KeyValuePair<string, string>>();
+            bool bought = PaidApps.Any(app =>
+            {
+                var card = Read(app[0]);
+                object paid, edition;
+                return card != null && card.TryGetValue("paid", out paid) && true.Equals(paid)
+                       && card.TryGetValue("edition", out edition) && "full".Equals(edition);
+            });
+            if (!bought) return offer;
+
+            foreach (var app in PaidApps)
+            {
+                if (offer.Count == 4) break;
+                if (Read(app[0]) != null) continue;
+                offer.Add(new KeyValuePair<string, string>(app[1],
+                    "https://protagonistlabs.app/" + app[0] + "/?code=" + (app[0] == "shelf" ? "SECOND30SHELF" : "SECOND30")
+                    + "&utm_source=cursorselector&utm_medium=app&utm_campaign=works-with"));
+            }
+            return offer;
+        }
+    }
+
     internal static class Program
     {
         [STAThread]
@@ -2163,6 +2296,7 @@ namespace CursorSelector
             Native.TryEnableDarkControls();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            Ecosystem.WriteCard();
             Application.Run(new MainForm());
         }
     }
