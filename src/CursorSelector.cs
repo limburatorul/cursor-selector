@@ -610,7 +610,7 @@ namespace CursorSelector
     /// </summary>
     internal sealed class BrandHead : Control
     {
-        internal const string Version = "1.3.0";
+        internal const string Version = "1.3.1";
 
         internal BrandHead()
         {
@@ -1368,8 +1368,8 @@ namespace CursorSelector
                 if (e.Control && e.KeyCode == Keys.F) { _search.Focus(); _search.SelectAll(); e.Handled = true; }
             };
 
-            // Actualizarea: la cateva secunde dupa pornire, apoi la fiecare 6 ore cat sta deschisa.
-            _updates.Tick += delegate { _updates.Interval = 6 * 60 * 60 * 1000; CheckForUpdates(false); };
+            // Actualizarea: la cateva secunde dupa pornire, apoi la fiecare ora cat sta deschisa.
+            _updates.Tick += delegate { _updates.Interval = 60 * 60 * 1000; CheckForUpdates(false); };
 
             Shown += delegate { RefreshList(null); _timer.Start(); _updates.Start(); };
             FormClosed += delegate
@@ -1997,7 +1997,8 @@ namespace CursorSelector
         /// </summary>
         /// <summary>
         /// Pe un fir din pool: reteaua nu are voie sa blocheze fereastra. Verificarea automata tace cand nu
-        /// e nimic nou; cea ceruta (click pe versiune) raspunde mereu.
+        /// e nimic nou sau cand n-a putut verifica (reincearca peste o ora); cea ceruta (click pe versiune)
+        /// raspunde mereu, si spune altfel "nimic nou" decat "n-am putut verifica".
         /// </summary>
         private void CheckForUpdates(bool manual)
         {
@@ -2006,12 +2007,15 @@ namespace CursorSelector
             if (manual) Confirm("Checking for updates\u2026");
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                var waiting = Updater.UpdateInPlace();
+                bool failed;
+                var waiting = Updater.UpdateInPlace(out failed);
                 BeginInvoke((Action)delegate
                 {
                     _checking = false;
                     if (waiting != null) Confirm("Updated to " + waiting + " \u2014 the next start opens it");
-                    else if (manual) Confirm("No newer version found (" + BrandHead.Version + ")");
+                    else if (!manual) return;
+                    else if (failed) Confirm("Couldn't check for updates \u2014 no connection or GitHub is busy. Try again later.");
+                    else Confirm("No newer version found (" + BrandHead.Version + ")");
                 });
             });
         }
@@ -2327,13 +2331,17 @@ namespace CursorSelector
         private const string Repo = "limburatorul/cursor-selector", Asset = "CursorSelector.exe";
         private static Version _waiting;   // ce asteapta deja urmatoarea pornire; nu descarcam de doua ori
 
-        /// <summary>Versiunea care asteapta urmatoarea pornire, sau null cand n-a fost nimic de facut.</summary>
-        internal static Version UpdateInPlace()
+        /// <summary>
+        /// Versiunea care asteapta urmatoarea pornire, sau null cand n-a fost nimic de facut. failed spune daca
+        /// null inseamna "n-am putut verifica" (offline, 403/5xx, raspuns stricat, descarcare respinsa), nu
+        /// "nu e nimic mai nou". Merge sub orice nume i-a dat utilizatorul (CursorSelector (1).exe).
+        /// </summary>
+        internal static Version UpdateInPlace(out bool failed)
         {
+            failed = false;
             if (_waiting != null) return _waiting;
+            failed = true;
             string exe = Application.ExecutablePath;
-            // Redenumit de utilizator: nu e o copie pe care s-o putem inlocui.
-            if (!Path.GetFileName(exe).Equals(Asset, StringComparison.OrdinalIgnoreCase)) return null;
             try { File.Delete(exe + ".old"); } catch (IOException) { } catch (UnauthorizedAccessException) { }
 
             string fresh = exe + ".new";
@@ -2349,7 +2357,8 @@ namespace CursorSelector
                         web.DownloadString("https://api.github.com/repos/" + Repo + "/releases/latest"));
                 }
                 Version latest, current = new Version(BrandHead.Version);
-                if (!Version.TryParse(((root["tag_name"] as string) ?? "").TrimStart('v', 'V'), out latest) || latest <= current) return null;
+                if (!Version.TryParse(((root["tag_name"] as string) ?? "").TrimStart('v', 'V'), out latest)) return null;
+                if (latest <= current) { failed = false; return null; }
 
                 var asset = ((System.Collections.IEnumerable)root["assets"]).OfType<Dictionary<string, object>>()
                     .FirstOrDefault(a => Asset.Equals(a["name"]));
@@ -2376,6 +2385,7 @@ namespace CursorSelector
                 File.Move(exe, exe + ".old");
                 try { File.Move(fresh, exe); }
                 catch { File.Move(exe + ".old", exe); throw; }   // dosarul nu ramane niciodata fara .exe
+                failed = false;
                 return _waiting = latest;
             }
             catch (Exception ex)
