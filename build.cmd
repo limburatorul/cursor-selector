@@ -9,6 +9,7 @@ if not exist "%CSC%" (
 "%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ /utf8output ^
     /out:"%~dp0CursorSelector.exe" ^
     /win32icon:"%~dp0app.ico" ^
+    /win32manifest:"%~dp0app.manifest" ^
     /reference:System.dll ^
     /reference:System.Core.dll ^
     /reference:System.IO.Compression.dll ^

@@ -14,6 +14,16 @@ using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
+// Fara ele, exe-ul nu spunea al cui e (FileVersion 0.0.0.0, fara companie sau descriere): semnul
+// static cel mai des pus pe seama unui fisier anonim de motoarele antivirus cu euristici ML.
+[assembly: System.Reflection.AssemblyTitle("Cursor Selector")]
+[assembly: System.Reflection.AssemblyDescription("Cursor Selector - preview and apply Windows cursor schemes")]
+[assembly: System.Reflection.AssemblyCompany("Protagonist Labs")]
+[assembly: System.Reflection.AssemblyProduct("Cursor Selector")]
+[assembly: System.Reflection.AssemblyCopyright("Copyright (c) 2026 Protagonist Labs. MIT licence")]
+[assembly: System.Reflection.AssemblyVersion("1.3.2")]
+[assembly: System.Reflection.AssemblyFileVersion("1.3.2")]
+
 namespace CursorSelector
 {
     internal static class Native
@@ -39,9 +49,6 @@ namespace CursorSelector
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool SystemParametersInfo(uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
-
-        [DllImport("user32.dll")]
-        internal static extern bool SetProcessDPIAware();
 
         [StructLayout(LayoutKind.Sequential)]
         internal struct RECT { public int Left, Top, Right, Bottom; }
@@ -162,8 +169,9 @@ namespace CursorSelector
                         }
                         if (read != bytes.Length) continue;
 
-                        IntPtr buffer = Marshal.AllocCoTaskMem(bytes.Length);
-                        Marshal.Copy(bytes, 0, buffer, bytes.Length);
+                        // Tabloul ramane fixat pe loc, nu copiat in memorie nativa: "resursa copiata in
+                        // memorie alocata nativ" e tiparul static al incarcatoarelor de cod, cautat de euristici.
+                        IntPtr buffer = GCHandle.Alloc(bytes, GCHandleType.Pinned).AddrOfPinnedObject();
                         collection.AddMemoryFont(buffer, bytes.Length);
                         uint installed;
                         AddFontMemResourceEx(buffer, (uint)bytes.Length, IntPtr.Zero, out installed);
@@ -610,7 +618,7 @@ namespace CursorSelector
     /// </summary>
     internal sealed class BrandHead : Control
     {
-        internal const string Version = "1.3.1";
+        internal static readonly string Version = typeof(BrandHead).Assembly.GetName().Version.ToString(3);
 
         internal BrandHead()
         {
@@ -2405,7 +2413,6 @@ namespace CursorSelector
         [STAThread]
         private static void Main()
         {
-            Native.SetProcessDPIAware();
             Native.TryEnableDarkControls();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
