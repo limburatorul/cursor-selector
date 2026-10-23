@@ -21,8 +21,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyCompany("Protagonist Labs")]
 [assembly: System.Reflection.AssemblyProduct("Cursor Selector")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (c) 2026 Protagonist Labs. MIT licence")]
-[assembly: System.Reflection.AssemblyVersion("1.3.2")]
-[assembly: System.Reflection.AssemblyFileVersion("1.3.2")]
+[assembly: System.Reflection.AssemblyVersion("1.4.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.4.0")]
 
 namespace CursorSelector
 {
@@ -1138,8 +1138,8 @@ namespace CursorSelector
 
     internal static class CursorConfig
     {
-        private const string CursorsPath = @"Control Panel\Cursors";
-        private const string SchemesPath = @"Control Panel\Cursors\Schemes";
+        internal const string CursorsPath = Env.Reg + @"Control Panel\Cursors";
+        internal const string SchemesPath = Env.Reg + @"Control Panel\Cursors\Schemes";
 
         internal static string ActiveName()
         {
@@ -1196,7 +1196,7 @@ namespace CursorSelector
             foreach (var role in Roles.Order)
             {
                 string v;
-                values[role] = saved.TryGetValue(role, out v) ? (v ?? "") : "";
+                values[role] = saved.TryGetValue(role, out v) ? DataFolder.Repoint(v ?? "") : "";
             }
             string scheme;
             Write(values, saved.TryGetValue("Scheme", out scheme) ? scheme : "");
@@ -1333,9 +1333,8 @@ namespace CursorSelector
 
         internal MainForm()
         {
-            string root = Path.GetDirectoryName(Application.ExecutablePath);
-            _libraryDir = Path.Combine(root, "Library");
-            _backupFile = Path.Combine(root, "backup.json");
+            _libraryDir = DataFolder.Library;
+            _backupFile = DataFolder.Backup;
             if (!Directory.Exists(_libraryDir)) Directory.CreateDirectory(_libraryDir);
 
             _search = _searchBox.Field;
@@ -1532,7 +1531,7 @@ namespace CursorSelector
             var buttons = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                Height = 220,
+                Height = 236,
                 FlowDirection = FlowDirection.TopDown,
                 WrapContents = false,
                 BackColor = Theme.Ground2,
@@ -1560,11 +1559,11 @@ namespace CursorSelector
                 ForeColor = Theme.Dim,
                 TextAlign = ContentAlignment.TopCenter
             };
-            const string mail = "feedback@protagonistlabs.app", more = "More apps from Protagonist Labs";
+            const string mail = "feedback@protagonistlabs.app", more = "More apps from Protagonist Labs", news = "What's new";
             var links = new LinkLabel
             {
-                Text = "Feedback: " + mail + "\nWebsite \u00b7 " + more,
-                Size = new Size(312, 40),
+                Text = "Feedback: " + mail + "\nWebsite \u00b7 " + news + "\n" + more,
+                Size = new Size(312, 56),
                 Margin = new Padding(0),
                 Font = Theme.FontSmall,
                 ForeColor = Theme.Dim,
@@ -1577,8 +1576,10 @@ namespace CursorSelector
             links.Links.Add(links.Text.IndexOf(mail), mail.Length, "mailto:" + mail + "?subject=Cursor%20Selector%20feedback");
             links.Links.Add(links.Text.IndexOf("Website"), 7, "https://protagonistlabs.app/cursorselector/?utm_source=cursorselector&utm_medium=app&utm_campaign=sidebar");
             links.Links.Add(links.Text.IndexOf(more), more.Length, "https://protagonistlabs.app/?utm_source=cursorselector&utm_medium=app&utm_campaign=more-apps");
+            links.Links.Add(links.Text.IndexOf(news), news.Length, "whatsnew");
             LinkLabelLinkClickedEventHandler open = delegate(object s, LinkLabelLinkClickedEventArgs e)
             {
+                if ((string)e.Link.LinkData == "whatsnew") { WhatsNewForm.Open(this); return; }
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo((string)e.Link.LinkData) { UseShellExecute = true });
             };
             links.LinkClicked += open;
@@ -2235,8 +2236,7 @@ namespace CursorSelector
     /// </summary>
     internal static class Ecosystem
     {
-        private static readonly string Apps = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ProtagonistLabs", "apps");
+        internal static readonly string Apps = Path.Combine(Env.AppData, "ProtagonistLabs", "apps");
 
         private static readonly string[][] PaidApps =
         {
@@ -2259,6 +2259,7 @@ namespace CursorSelector
                         { "name", "Cursor Selector" },
                         { "version", BrandHead.Version },
                         { "exe", Application.ExecutablePath },
+                        { "data", DataFolder.Root },
                         { "edition", "free" },
                         { "paid", false },
                         { "page", "https://protagonistlabs.app/cursorselector/" },
@@ -2408,6 +2409,472 @@ namespace CursorSelector
         }
     }
 
+    /// <summary>
+    /// Unde citeste si scrie aplicatia in afara folderului ei. Build-ul de test (MOVETEST, facut de mana,
+    /// niciodata livrat) muta totul pe copii: AppData din variabila CS_TEST_APPDATA, registrul sub
+    /// HKCU\Software\CursorSelectorTest, ca testele sa nu atinga cursoarele, datele sau cartea userului.
+    /// </summary>
+    internal static class Env
+    {
+#if MOVETEST
+        internal static readonly string AppData = Environment.GetEnvironmentVariable("CS_TEST_APPDATA");
+        internal const string Reg = @"Software\CursorSelectorTest\";
+#else
+        internal static readonly string AppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        internal const string Reg = "";
+#endif
+    }
+
+    /// <summary>
+    /// Din 1.4.0 tot ce tine Cursor Selector sta in %APPDATA%\ProtagonistLabs\Cursor Selector (regula studioului,
+    /// nota din vault Ecosistem-v3-foldere): Library\ (schemele), backup.json (cursoarele dinainte de primul
+    /// Apply) si move.log. Pana atunci stateau langa exe; exe-ul ramane portabil.
+    ///
+    /// Mutarea, la fiecare pornire pana s-a facut: fiecare schema din Library separat (un folder = o schema,
+    /// deci si un zip "with-cursors" despachetat iar langa exe isi aduce schemele), apoi backup.json. Pe
+    /// acelasi disc e o redenumire. Pe alt disc (exe-ul pe D:, AppData pe C:) e o copie intreaga intr-un
+    /// folder temporar, redenumit abia la sfarsit, si numai dupa aceea se sterge originalul: niciodata o
+    /// copie pe jumatate. Ce exista deja in locul nou nu se amesteca: vechiul ramane, cu un rand in move.log.
+    /// Ce nu se poate muta acum ramane pe loc si se incearca la pornirea urmatoare.
+    ///
+    /// Schema activa (HKCU\Control Panel\Cursors) si lista din Proprietati mouse (...\Schemes) tin cai
+    /// absolute spre fisierele din Library: Repoint le muta pe cele ale caror fisiere sunt acum in locul nou.
+    /// </summary>
+    internal static class DataFolder
+    {
+        internal static readonly string Root = Path.Combine(Env.AppData, "ProtagonistLabs", "Cursor Selector");
+        internal static readonly string Library = Path.Combine(Root, "Library");
+        internal static readonly string Backup = Path.Combine(Root, "backup.json");
+        private static readonly string OldRoot = Path.GetDirectoryName(Application.ExecutablePath);
+        private static readonly string OldLibrary = Path.Combine(OldRoot, "Library");
+        internal static readonly string OldBackup = Path.Combine(OldRoot, "backup.json");
+
+        internal static void Move()
+        {
+            // Un exe pus chiar in folderul de date nu are ce muta.
+            if (string.Equals(Path.GetFullPath(OldRoot).TrimEnd('\\'), Path.GetFullPath(Root).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) return;
+            if (Directory.Exists(OldLibrary))
+            {
+                foreach (string entry in Directory.GetFileSystemEntries(OldLibrary))
+                    MoveOne(entry, Path.Combine(Library, Path.GetFileName(entry)));
+                try { Directory.Delete(OldLibrary); }                       // doar daca a ramas gol
+                catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
+            MoveOne(OldBackup, Backup);
+            RepointRegistry();
+        }
+
+        private static void MoveOne(string from, string to)
+        {
+            bool dir = Directory.Exists(from);
+            if (!dir && !File.Exists(from)) return;
+            if (Directory.Exists(to) || File.Exists(to)) { Log("kept " + from + ": " + to + " already exists"); return; }
+            string staging = to + ".moving";
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(to));
+                if (string.Equals(Path.GetPathRoot(Path.GetFullPath(from)), Path.GetPathRoot(Path.GetFullPath(to)), StringComparison.OrdinalIgnoreCase))
+                {
+                    if (dir) Directory.Move(from, to); else File.Move(from, to);
+                    Log("moved " + from + " to " + to);
+                    return;
+                }
+                Delete(staging);
+                if (dir) CopyTree(from, staging); else File.Copy(from, staging);
+                if (dir) Directory.Move(staging, to); else File.Move(staging, to);
+                Log("copied " + from + " to " + to + (Delete(from) ? ", original removed" : ", original could not be removed"));
+            }
+            catch (Exception ex)
+            {
+                if (!(ex is IOException || ex is UnauthorizedAccessException)) throw;
+                Delete(staging);
+                Log("not moved yet " + from + ": " + ex.Message);
+            }
+        }
+
+        private static void CopyTree(string from, string to)
+        {
+            Directory.CreateDirectory(to);
+            foreach (string f in Directory.GetFiles(from)) File.Copy(f, Path.Combine(to, Path.GetFileName(f)));
+            foreach (string d in Directory.GetDirectories(from)) CopyTree(d, Path.Combine(to, Path.GetFileName(d)));
+        }
+
+        private static bool Delete(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path)) Directory.Delete(path, true);
+                else if (File.Exists(path)) File.Delete(path);
+                return true;
+            }
+            catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
+        }
+
+        /// <summary>O cale spre vechea Library al carei fisier e acum in cea noua; orice alta cale ramane cum e.</summary>
+        internal static string Repoint(string path)
+        {
+            string old = OldLibrary + "\\";
+            if (path == null || !path.StartsWith(old, StringComparison.OrdinalIgnoreCase)) return path;
+            string moved = Path.Combine(Library, path.Substring(old.Length));
+            return File.Exists(moved) && !File.Exists(path) ? moved : path;
+        }
+
+        private static void RepointRegistry()
+        {
+            bool active = false;
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(CursorConfig.CursorsPath, true))
+                    if (key != null)
+                        foreach (string name in key.GetValueNames())
+                        {
+                            string v = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames) as string, w = Repoint(v);
+                            if (w != v) { key.SetValue(name, w, key.GetValueKind(name)); active = true; }
+                        }
+                using (var key = Registry.CurrentUser.OpenSubKey(CursorConfig.SchemesPath, true))
+                    if (key != null)
+                        foreach (string name in key.GetValueNames())
+                        {
+                            string v = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
+                            if (v == null) continue;
+                            string w = string.Join(",", v.Split(',').Select(Repoint).ToArray());
+                            if (w != v) key.SetValue(name, w, key.GetValueKind(name));
+                        }
+            }
+            catch (Exception ex)
+            {
+                if (!(ex is IOException || ex is UnauthorizedAccessException || ex is System.Security.SecurityException)) throw;
+            }
+#if !MOVETEST
+            // Windows reciteste schema activa, acum din locul nou.
+            if (active) Native.SystemParametersInfo(Native.SPI_SETCURSORS, 0, IntPtr.Zero, Native.SPIF_UPDATEINIFILE_SENDCHANGE);
+#endif
+        }
+
+        private static void Log(string line)
+        {
+            try
+            {
+                Directory.CreateDirectory(Root);
+                File.AppendAllText(Path.Combine(Root, "move.log"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss ") + line + "\r\n");
+            }
+            catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>
+    /// What's new, ca la celelalte aplicatii ale studioului: versiunile in stanga, sub luna in care au iesit,
+    /// cea aleasa in dreapta sub bannerul ei de 960 x 170. Notele sunt whatsnew.txt, inglobat in exe (build.cmd),
+    /// deci merge fara internet si arata toate versiunile. Se deschide singura o data dupa un update (vazuta
+    /// cand e inchisa de user, nu cand se deschide) si din linkul What's new din bara.
+    /// </summary>
+    internal sealed class WhatsNewForm : Form
+    {
+        private sealed class Release
+        {
+            internal string Version, Title;
+            internal DateTime Date;
+            internal readonly List<string> Lines = new List<string>();
+        }
+
+        private const string SeenKey = Env.Reg + @"Software\Cursor Selector";
+        private static WhatsNewForm _open;
+        private readonly List<Release> _releases = ReadNotes();
+        private readonly List<Row> _rows = new List<Row>();
+        private readonly Banner _banner = new Banner();
+        private readonly FlowLayoutPanel _notes = new FlowLayoutPanel();
+        private int _shown = -1;
+
+        /// <summary>Doar dupa un update: o instalare noua n-are ce sa-i spuna.</summary>
+        internal static void ShowOnce(Form owner, bool ranBefore)
+        {
+            string seen;
+            using (var k = Registry.CurrentUser.OpenSubKey(SeenKey)) seen = k == null ? null : k.GetValue("WhatsNewSeen") as string;
+            if (seen == BrandHead.Version) return;
+            if (seen != null || ranBefore) Open(owner);
+            else MarkSeen();
+        }
+
+        internal static void Open(Form owner)
+        {
+            if (_open != null) { _open.Activate(); return; }
+            _open = new WhatsNewForm();
+            _open.FormClosed += delegate(object s, FormClosedEventArgs e)
+            {
+                _open = null;
+                // Inchisa odata cu aplicatia (sau cu Windows-ul) nu conteaza ca vazuta: revine la pornirea urmatoare.
+                if (e.CloseReason == CloseReason.UserClosing) MarkSeen();
+            };
+            _open.Show(owner);
+        }
+
+        private static void MarkSeen()
+        {
+            using (var k = Registry.CurrentUser.CreateSubKey(SeenKey)) k.SetValue("WhatsNewSeen", BrandHead.Version);
+        }
+
+        private static List<Release> ReadNotes()
+        {
+            var list = new List<Release>();
+            using (var stream = typeof(WhatsNewForm).Assembly.GetManifestResourceStream("whatsnew.txt"))
+            using (var reader = new StreamReader(stream))
+                foreach (string raw in reader.ReadToEnd().Split('\n'))
+                {
+                    string line = raw.TrimEnd('\r');
+                    var head = Regex.Match(line, @"^## (\S+) \| (\d{4}-\d\d-\d\d) \| (.+)$");
+                    if (head.Success)
+                        list.Add(new Release { Version = head.Groups[1].Value, Date = DateTime.ParseExact(head.Groups[2].Value, "yyyy-MM-dd", null), Title = head.Groups[3].Value });
+                    else if (list.Count > 0 && line.StartsWith("- "))
+                        list[list.Count - 1].Lines.Add(line.Substring(2).Replace("**", "").Replace("`", ""));
+                }
+            return list;
+        }
+
+        private WhatsNewForm()
+        {
+            Text = "What's new — Cursor Selector";
+            Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            Size = new Size(1240, 720);            // loc pentru lista si un banner de 960 x 170
+            MinimumSize = new Size(700, 420);
+            StartPosition = FormStartPosition.CenterScreen;
+            BackColor = Theme.Ground2;
+            Font = Theme.FontBody;
+            ShowInTaskbar = false;
+            KeyPreview = true;
+
+            var nav = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Left, Width = 232, FlowDirection = FlowDirection.TopDown, WrapContents = false,
+                AutoScroll = true, Padding = new Padding(18, 16, 0, 12), BackColor = Theme.Ground2
+            };
+            string month = null;
+            for (int i = 0; i < _releases.Count; i++)
+            {
+                var r = _releases[i];
+                string m = r.Date.ToString("MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
+                if (m != month)
+                {
+                    month = m;
+                    nav.Controls.Add(new Label
+                    {
+                        Text = m, AutoSize = false, Size = new Size(196, 26), Font = Theme.FontSmall, ForeColor = Theme.Dim,
+                        TextAlign = ContentAlignment.BottomLeft, Margin = new Padding(0, i == 0 ? 0 : 10, 0, 2)
+                    });
+                }
+                var row = new Row(r.Version, i == 0 ? "Latest" : r.Date.ToString("d MMM", System.Globalization.CultureInfo.InvariantCulture)) { AccessibleName = r.Version + ", " + r.Title };
+                int index = i;
+                row.Click += delegate { ShowRelease(index); };
+                new ToolTip().SetToolTip(row, r.Title);
+                _rows.Add(row);
+                nav.Controls.Add(row);
+            }
+
+            _banner.Dock = DockStyle.Top;
+            _notes.Dock = DockStyle.Fill;
+            _notes.FlowDirection = FlowDirection.TopDown;
+            _notes.WrapContents = false;
+            _notes.AutoScroll = true;
+            _notes.Padding = new Padding(0, 14, 0, 0);
+            _notes.Resize += delegate { foreach (Control c in _notes.Controls) c.MaximumSize = new Size(NoteWidth, 0); };
+            var right = new Panel { Dock = DockStyle.Fill, Padding = new Padding(16, 16, 18, 0), BackColor = Theme.Ground2 };
+            right.Controls.Add(_notes);
+            right.Controls.Add(_banner);
+            _notes.BringToFront();
+
+            var bottom = new Panel { Dock = DockStyle.Bottom, Height = 60, BackColor = Theme.Ground2 };
+            var close = new FlatButton("Close", true) { Size = new Size(140, 50), Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            close.Location = new Point(bottom.Width - close.Width - 14, 4);
+            close.Click += delegate { Close(); };
+            bottom.Controls.Add(close);
+
+            Controls.Add(bottom);
+            Controls.Add(nav);
+            Controls.Add(right);
+            right.BringToFront();
+
+            KeyDown += delegate(object s, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Escape) Close();
+                else if (e.KeyCode == Keys.Down || e.KeyCode == Keys.Up)
+                {
+                    ShowRelease(Math.Max(0, Math.Min(_releases.Count - 1, _shown + (e.KeyCode == Keys.Down ? 1 : -1))));
+                    _rows[_shown].Focus();
+                    e.Handled = e.SuppressKeyPress = true;
+                }
+            };
+            int current = _releases.FindIndex(r => r.Version == BrandHead.Version);
+            ShowRelease(Math.Max(0, current));
+            Shown += delegate { _rows[_shown].Focus(); };
+        }
+
+        private int NoteWidth { get { return Math.Max(200, Math.Min(960, _notes.ClientSize.Width - 24)); } }
+
+        private void ShowRelease(int i)
+        {
+            if (i == _shown || i < 0 || i >= _releases.Count) return;
+            _shown = i;
+            var r = _releases[i];
+            for (int j = 0; j < _rows.Count; j++) _rows[j].Selected = j == i;
+            _banner.Release = r.Version;
+            _banner.Title = r.Title;
+            _banner.Invalidate();
+            _notes.SuspendLayout();
+            _notes.Controls.Clear();
+            _notes.Controls.Add(new Label
+            {
+                Text = r.Date.ToString("d MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture),
+                AutoSize = true, ForeColor = Theme.Dim, Margin = new Padding(0, 0, 0, 8)
+            });
+            foreach (string line in r.Lines)
+                _notes.Controls.Add(new Label
+                {
+                    Text = "•  " + line, AutoSize = true, MaximumSize = new Size(NoteWidth, 0),
+                    ForeColor = Theme.Text, Margin = new Padding(0, 3, 0, 5)
+                });
+            _notes.ResumeLayout();
+            _notes.AutoScrollPosition = Point.Empty;
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            int on = 1;
+            if (Native.DwmSetWindowAttribute(Handle, 20, ref on, sizeof(int)) != 0)
+                Native.DwmSetWindowAttribute(Handle, 19, ref on, sizeof(int));
+        }
+
+        /// <summary>Un rand din lista: versiunea la stanga, data (sau Latest) la dreapta.</summary>
+        private sealed class Row : Control
+        {
+            private readonly string _date;
+            private bool _hover, _selected;
+
+            internal Row(string version, string date)
+            {
+                SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint
+                       | ControlStyles.Selectable, true);
+                Text = version;
+                _date = date;
+                Size = new Size(196, 34);
+                Margin = new Padding(0, 1, 0, 1);
+                BackColor = Theme.Ground2;
+                Cursor = Cursors.Hand;
+                TabStop = true;
+                AccessibleRole = AccessibleRole.ListItem;
+            }
+
+            internal bool Selected { set { _selected = value; Invalidate(); } }
+
+            protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
+            protected override void OnMouseLeave(EventArgs e) { _hover = false; Invalidate(); base.OnMouseLeave(e); }
+            protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+            protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
+            protected override void OnMouseDown(MouseEventArgs e) { Focus(); base.OnMouseDown(e); }
+            protected override void OnKeyUp(KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) OnClick(EventArgs.Empty);
+                base.OnKeyUp(e);
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                var g = e.Graphics;
+                g.Clear(Theme.Ground2);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var box = new Rectangle(0, 0, Width - 1, Height - 1);
+                if (_selected || _hover) Theme.FillRounded(g, box, 8, _selected ? Theme.SelectedRow : Theme.Panel2);
+                if (Focused) Theme.DrawRounded(g, box, 8, Theme.Accent);
+                var inner = Rectangle.Inflate(box, -10, 0);
+                TextRenderer.DrawText(g, Text, Theme.FontBody, inner, Theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+                TextRenderer.DrawText(g, _date, Theme.FontSmall, inner, Theme.Dim, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+            }
+        }
+
+        /// <summary>
+        /// 960 x 170, mai mic odata cu fereastra. Desenat in culorile Cursor Selector din sablonul de bannere al
+        /// studioului (Marketing\banners): sageti de cursor puse de un generator cu samanta din versiune, deci o
+        /// versiune arata la fel de fiecare data si vecinele nu seamana intre ele.
+        /// </summary>
+        private sealed class Banner : Control
+        {
+            internal string Release = "", Title = "";
+            private static readonly Color Pink = Color.FromArgb(0xFF, 0x6B, 0xA8), Pale = Color.FromArgb(0xFF, 0xB8, 0xD5);
+
+            internal Banner()
+            {
+                SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint
+                       | ControlStyles.ResizeRedraw, true);
+                BackColor = Theme.Ground2;
+                Height = 170;
+            }
+
+            protected override void OnResize(EventArgs e)
+            {
+                base.OnResize(e);
+                int h = Math.Min(Width, 960) * 170 / 960;
+                if (h > 0 && h != Height) Height = h;
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                var g = e.Graphics;
+                g.Clear(Theme.Ground2);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                float scale = Math.Min(Width, 960) / 960f;
+                g.ScaleTransform(scale, scale);
+                var all = new Rectangle(0, 0, 960, 170);
+                using (var clip = Theme.RoundedPath(all, 10)) g.SetClip(clip);
+                using (var ground = new LinearGradientBrush(all, Color.FromArgb(0x1C, 0x0C, 0x15), Color.FromArgb(0x0D, 0x0D, 0x16), 12f))
+                {
+                    var blend = new ColorBlend { Colors = new[] { Color.FromArgb(0x1C, 0x0C, 0x15), Color.FromArgb(0x2B, 0x10, 0x20), Color.FromArgb(0x0D, 0x0D, 0x16) }, Positions = new[] { 0f, 0.55f, 1f } };
+                    ground.InterpolationColors = blend;
+                    g.FillRectangle(ground, all);
+                }
+                uint h = 2166136261;
+                foreach (char c in Release) h = (h ^ c) * 16777619;
+                var rnd = new Random((int)(h & 0x7FFFFFFF));
+                using (var glow = new GraphicsPath())
+                {
+                    glow.AddEllipse(560 + rnd.Next(200), -150, 560, 380);
+                    using (var brush = new PathGradientBrush(glow) { CenterColor = Color.FromArgb(90, Pink), SurroundColors = new[] { Color.FromArgb(0, Pink) } })
+                        g.FillPath(brush, glow);
+                }
+                // Sageti de cursor, cate una mai aprinsa, rasturnate putin: un raft de scheme.
+                PointF[] arrow = { new PointF(0, 0), new PointF(0, 1), new PointF(0.26f, 0.76f), new PointF(0.42f, 1.08f),
+                                   new PointF(0.56f, 1.02f), new PointF(0.4f, 0.71f), new PointF(0.72f, 0.71f) };
+                int count = 6 + rnd.Next(4);
+                for (int i = 0; i < count; i++)
+                {
+                    float size = 34 + rnd.Next(46), x = 480 + i * (440f / count) + rnd.Next(20), y = 18 + rnd.Next(120 - (int)size / 2);
+                    var state = g.Save();
+                    g.TranslateTransform(x, y);
+                    g.RotateTransform(rnd.Next(-18, 18));
+                    var points = arrow.Select(p => new PointF(p.X * size, p.Y * size)).ToArray();
+                    bool lit = rnd.Next(4) == 0;
+                    using (var fill = new SolidBrush(lit ? Pink : Color.FromArgb(lit ? 255 : 40 + rnd.Next(60), Pale)))
+                    using (var pen = new Pen(Color.FromArgb(150, Pale), 1.5f) { LineJoin = LineJoin.Round })
+                    {
+                        g.FillPolygon(fill, points);
+                        g.DrawPolygon(pen, points);
+                    }
+                    g.Restore(state);
+                }
+                using (var eyebrow = new Font(Theme.FontEyebrow.FontFamily, 8.5f, FontStyle.Regular))
+                using (var big = new Font(Theme.FontDisplay.FontFamily, 30f, FontStyle.Bold))
+                using (var body = new Font(Theme.FontBody.FontFamily, 10.5f, FontStyle.Regular))
+                using (var white = new SolidBrush(Color.FromArgb(215, 255, 255, 255)))
+                using (var pale = new SolidBrush(Pale))
+                {
+                    g.DrawString("WHAT’S NEW IN CURSOR SELECTOR", eyebrow, white, 26, 44);
+                    g.DrawString(Release, big, pale, 20, 60);
+                    g.DrawString(Title, body, white, new RectangleF(26, 116, 430, 44));
+                }
+            }
+        }
+    }
+
     internal static class Program
     {
         [STAThread]
@@ -2416,8 +2883,14 @@ namespace CursorSelector
             Native.TryEnableDarkControls();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            // Inainte de 1.4.0 nu se nota nimic: o carte sau un backup deja existente inseamna un update.
+            bool ranBefore = File.Exists(Path.Combine(Ecosystem.Apps, "cursorselector.json"))
+                || File.Exists(DataFolder.OldBackup) || File.Exists(DataFolder.Backup);
+            DataFolder.Move();   // inainte ca fereastra sa citeasca biblioteca
             Ecosystem.WriteCard();
-            Application.Run(new MainForm());
+            var form = new MainForm();
+            form.Shown += delegate { WhatsNewForm.ShowOnce(form, ranBefore); };
+            Application.Run(form);
         }
     }
 }

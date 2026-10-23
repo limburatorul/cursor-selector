@@ -1,0 +1,37 @@
+# What's new, built into the exe (build.cmd: /resource whatsnew.txt). Newest first.
+# "## version | yyyy-mm-dd | title", then one "- " line per point.
+
+## 1.4.0 | 2026-10-23 | One home for your cursors, and this window
+- What's new lives here now: every release, by month. It opens once after an update, and any time from What's new in the sidebar.
+- Your cursor library and the backup of your original cursors moved to %APPDATA%\ProtagonistLabs\Cursor Selector, beside the other Protagonist Labs apps. It happened by itself the first time 1.4 started.
+- The scheme you are using keeps working: Windows is pointed at the cursors' new place.
+- Cursor Selector is still one portable .exe. Open Library folder takes you to the new place.
+
+## 1.3.2 | 2026-10-17 | An exe that says whose it is
+- The .exe names Protagonist Labs and its version, so fewer antivirus tools mistake it for something else.
+
+## 1.3.1 | 2026-10-16 | Hourly update checks
+- Checks for a new version every hour, and says so when a check could not reach GitHub.
+
+## 1.3.0 | 2026-10-15 | Cursor Selector updates itself
+- A newer version is downloaded in the background, checked, and used the next time you open the app.
+- Click the name and version at the top of the sidebar to check yourself.
+
+## 1.2.0 | 2026-10-15 | The shared app card
+- Cursor Selector lets the other Protagonist Labs apps know it is installed. Nothing is sent anywhere.
+- If you own one of our paid apps, a quiet line lists the others at 30% off.
+
+## 1.1.0 | 2026-10-10 | A face of its own
+- The brand's typefaces travel inside the app, each cursor sits on a chip its own size, and the 17 roles are grouped by the job they do.
+- Every scheme shows its arrow in the list, with search (Ctrl+F) and a closer look at any single cursor.
+
+## 1.0.2 | 2026-09-26 | Links that say where they came from
+- Website and More apps tell protagonistlabs.app the visit came from Cursor Selector.
+
+## 1.0.1 | 2026-09-26 | Feedback, and packs in the right order
+- Send feedback and Website under the library buttons.
+- Packs whose install.inf lists files out of order (macOS, Material Design) land on the right roles.
+
+## 1.0.0 | 2026-09-18 | The first Cursor Selector
+- Previews all 17 cursor roles of a scheme, applies it in one click, and imports a folder or a .zip straight into the library.
+- Portable, no installer, no admin rights.

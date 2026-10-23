@@ -22,6 +22,7 @@ if not exist "%CSC%" (
     /resource:"%~dp0fonts\IBMPlexSans-Regular.ttf",Fonts.IBMPlexSans-Regular.ttf ^
     /resource:"%~dp0fonts\IBMPlexSans-Bold.ttf",Fonts.IBMPlexSans-Bold.ttf ^
     /resource:"%~dp0fonts\IBMPlexMono-Regular.ttf",Fonts.IBMPlexMono-Regular.ttf ^
+    /resource:"%~dp0whatsnew.txt",whatsnew.txt ^
     "%~dp0src\CursorSelector.cs"
 
 if errorlevel 1 (

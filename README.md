@@ -2,7 +2,8 @@
 
 **Download and details:** [protagonistlabs.app/cursorselector](https://protagonistlabs.app/cursorselector/)
 
-A portable app for changing the Windows cursor: a library of schemes in the app's folder, and a
+A portable app for changing the Windows cursor: a library of schemes in
+`%APPDATA%\ProtagonistLabs\Cursor Selector\`, and a
 graphical client that previews each scheme in all 17 roles before you apply it.
 
 ## Starting it
@@ -123,8 +124,9 @@ Two things from the note can **not** be applied here:
 | File | Role |
 |---|---|
 | `CursorSelector.exe` | the application |
-| `Library\` | the library of schemes, one subfolder per scheme |
-| `backup.json` | the cursor configuration from before the first apply; written only once |
+| `Library\` | the library of schemes, one subfolder per scheme; in `%APPDATA%\ProtagonistLabs\Cursor Selector\` since 1.4.0 (a `Library\` beside the exe, from older versions or the with-cursors zip, moves there at start) |
+| `backup.json` | the cursor configuration from before the first apply; written only once; in the same AppData folder |
+| `whatsnew.txt` | the What's new notes, embedded in the executable at build time |
 | `src\CursorSelector.cs` | the source code |
 | `build.cmd` | rebuilds the executable |
 | `app.ico` | the icon, embedded in the executable at build time |
