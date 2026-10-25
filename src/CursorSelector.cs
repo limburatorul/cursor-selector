@@ -21,8 +21,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyCompany("Protagonist Labs")]
 [assembly: System.Reflection.AssemblyProduct("Cursor Selector")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (c) 2026 Protagonist Labs. MIT licence")]
-[assembly: System.Reflection.AssemblyVersion("1.4.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.4.0")]
+[assembly: System.Reflection.AssemblyVersion("1.4.1")]
+[assembly: System.Reflection.AssemblyFileVersion("1.4.1")]
 
 namespace CursorSelector
 {
@@ -628,35 +628,18 @@ namespace CursorSelector
             Height = 46;
         }
 
+        private static readonly Bitmap Mark = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath).ToBitmap();
+
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
             g.Clear(Theme.Ground2);
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            // Patratul marcii, cu sageata aplicatiei in el: aceeasi silueta ca iconita si ca pagina.
+            // Marca: iconita aplicatiei (cea din exe), ca in bara de titlu si pe pagina.
             var mark = new Rectangle(0, (Height - 30) / 2, 30, 30);
-            Theme.FillRounded(g, mark, 9, Theme.Panel2);
-            Theme.DrawRounded(g, mark, 9, Theme.Edge);
-            using (var path = new GraphicsPath())
-            {
-                PointF[] arrow =
-                {
-                    new PointF(0.34f, 0.20f), new PointF(0.34f, 0.80f), new PointF(0.49f, 0.65f),
-                    new PointF(0.58f, 0.86f), new PointF(0.68f, 0.82f), new PointF(0.59f, 0.61f),
-                    new PointF(0.78f, 0.61f)
-                };
-                var points = new PointF[arrow.Length];
-                for (int i = 0; i < arrow.Length; i++)
-                    points[i] = new PointF(mark.X + arrow[i].X * mark.Width, mark.Y + arrow[i].Y * mark.Height);
-                path.AddPolygon(points);
-                using (var fill = new SolidBrush(Theme.Text))
-                using (var pen = new Pen(Theme.Accent, 1.4f) { LineJoin = LineJoin.Round })
-                {
-                    g.FillPath(fill, path);
-                    g.DrawPath(pen, path);
-                }
-            }
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(Mark, mark);
 
             int line = Theme.LineHeight(g, Theme.FontBrand);
             TextRenderer.DrawText(g, "Cursor Selector", Theme.FontBrand,
@@ -2716,9 +2699,7 @@ namespace CursorSelector
             _shown = i;
             var r = _releases[i];
             for (int j = 0; j < _rows.Count; j++) _rows[j].Selected = j == i;
-            _banner.Release = r.Version;
-            _banner.Title = r.Title;
-            _banner.Invalidate();
+            _banner.SetPicture(Picture(r));
             _notes.SuspendLayout();
             _notes.Controls.Clear();
             _notes.Controls.Add(new Label
@@ -2742,6 +2723,17 @@ namespace CursorSelector
             int on = 1;
             if (Native.DwmSetWindowAttribute(Handle, 20, ref on, sizeof(int)) != 0)
                 Native.DwmSetWindowAttribute(Handle, 19, ref on, sizeof(int));
+        }
+
+        /// <summary>Poza versiunii (WhatsNew\x.y.jpg, inglobata), altfel cea a lunii in care a iesit (WhatsNew\mMM.jpg).</summary>
+        private static Bitmap Picture(Release r)
+        {
+            var exe = typeof(WhatsNewForm).Assembly;
+            string minor = string.Join(".", r.Version.Split('.').Take(2));
+            using (var stream = exe.GetManifestResourceStream("WhatsNew." + minor + ".jpg")
+                             ?? exe.GetManifestResourceStream("WhatsNew.m" + r.Date.ToString("MM") + ".jpg"))
+            using (var image = Image.FromStream(stream))
+                return new Bitmap(image);   // o copie: Image.FromStream vrea fluxul deschis cat traieste imaginea
         }
 
         /// <summary>Un rand din lista: versiunea la stanga, data (sau Latest) la dreapta.</summary>
@@ -2791,15 +2783,10 @@ namespace CursorSelector
             }
         }
 
-        /// <summary>
-        /// 960 x 170, mai mic odata cu fereastra. Desenat in culorile Cursor Selector din sablonul de bannere al
-        /// studioului (Marketing\banners): sageti de cursor puse de un generator cu samanta din versiune, deci o
-        /// versiune arata la fel de fiecare data si vecinele nu seamana intre ele.
-        /// </summary>
+        /// <summary>960 x 170, mai mic odata cu fereastra: poza versiunii (sau a lunii ei), cu colturile rotunjite.</summary>
         private sealed class Banner : Control
         {
-            internal string Release = "", Title = "";
-            private static readonly Color Pink = Color.FromArgb(0xFF, 0x6B, 0xA8), Pale = Color.FromArgb(0xFF, 0xB8, 0xD5);
+            private Bitmap _picture;
 
             internal Banner()
             {
@@ -2807,6 +2794,13 @@ namespace CursorSelector
                        | ControlStyles.ResizeRedraw, true);
                 BackColor = Theme.Ground2;
                 Height = 170;
+            }
+
+            internal void SetPicture(Bitmap picture)
+            {
+                if (_picture != null) _picture.Dispose();
+                _picture = picture;
+                Invalidate();
             }
 
             protected override void OnResize(EventArgs e)
@@ -2821,56 +2815,18 @@ namespace CursorSelector
                 var g = e.Graphics;
                 g.Clear(Theme.Ground2);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 float scale = Math.Min(Width, 960) / 960f;
                 g.ScaleTransform(scale, scale);
                 var all = new Rectangle(0, 0, 960, 170);
                 using (var clip = Theme.RoundedPath(all, 10)) g.SetClip(clip);
-                using (var ground = new LinearGradientBrush(all, Color.FromArgb(0x1C, 0x0C, 0x15), Color.FromArgb(0x0D, 0x0D, 0x16), 12f))
-                {
-                    var blend = new ColorBlend { Colors = new[] { Color.FromArgb(0x1C, 0x0C, 0x15), Color.FromArgb(0x2B, 0x10, 0x20), Color.FromArgb(0x0D, 0x0D, 0x16) }, Positions = new[] { 0f, 0.55f, 1f } };
-                    ground.InterpolationColors = blend;
-                    g.FillRectangle(ground, all);
-                }
-                uint h = 2166136261;
-                foreach (char c in Release) h = (h ^ c) * 16777619;
-                var rnd = new Random((int)(h & 0x7FFFFFFF));
-                using (var glow = new GraphicsPath())
-                {
-                    glow.AddEllipse(560 + rnd.Next(200), -150, 560, 380);
-                    using (var brush = new PathGradientBrush(glow) { CenterColor = Color.FromArgb(90, Pink), SurroundColors = new[] { Color.FromArgb(0, Pink) } })
-                        g.FillPath(brush, glow);
-                }
-                // Sageti de cursor, cate una mai aprinsa, rasturnate putin: un raft de scheme.
-                PointF[] arrow = { new PointF(0, 0), new PointF(0, 1), new PointF(0.26f, 0.76f), new PointF(0.42f, 1.08f),
-                                   new PointF(0.56f, 1.02f), new PointF(0.4f, 0.71f), new PointF(0.72f, 0.71f) };
-                int count = 6 + rnd.Next(4);
-                for (int i = 0; i < count; i++)
-                {
-                    float size = 34 + rnd.Next(46), x = 480 + i * (440f / count) + rnd.Next(20), y = 18 + rnd.Next(120 - (int)size / 2);
-                    var state = g.Save();
-                    g.TranslateTransform(x, y);
-                    g.RotateTransform(rnd.Next(-18, 18));
-                    var points = arrow.Select(p => new PointF(p.X * size, p.Y * size)).ToArray();
-                    bool lit = rnd.Next(4) == 0;
-                    using (var fill = new SolidBrush(lit ? Pink : Color.FromArgb(lit ? 255 : 40 + rnd.Next(60), Pale)))
-                    using (var pen = new Pen(Color.FromArgb(150, Pale), 1.5f) { LineJoin = LineJoin.Round })
-                    {
-                        g.FillPolygon(fill, points);
-                        g.DrawPolygon(pen, points);
-                    }
-                    g.Restore(state);
-                }
-                using (var eyebrow = new Font(Theme.FontEyebrow.FontFamily, 8.5f, FontStyle.Regular))
-                using (var big = new Font(Theme.FontDisplay.FontFamily, 30f, FontStyle.Bold))
-                using (var body = new Font(Theme.FontBody.FontFamily, 10.5f, FontStyle.Regular))
-                using (var white = new SolidBrush(Color.FromArgb(215, 255, 255, 255)))
-                using (var pale = new SolidBrush(Pale))
-                {
-                    g.DrawString("WHAT’S NEW IN CURSOR SELECTOR", eyebrow, white, 26, 44);
-                    g.DrawString(Release, big, pale, 20, 60);
-                    g.DrawString(Title, body, white, new RectangleF(26, 116, 430, 44));
-                }
+                g.DrawImage(_picture, all);
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing && _picture != null) _picture.Dispose();
+                base.Dispose(disposing);
             }
         }
     }

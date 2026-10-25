@@ -1,6 +1,10 @@
 # What's new, built into the exe (build.cmd: /resource whatsnew.txt). Newest first.
 # "## version | yyyy-mm-dd | title", then one "- " line per point.
 
+## 1.4.1 | 2026-10-25 | A new icon
+- A new icon, brighter and easier to spot in the taskbar. It is on the window, the sidebar and the Start menu.
+- What's new now shows a picture for each release.
+
 ## 1.4.0 | 2026-10-23 | One home for your cursors, and this window
 - What's new lives here now: every release, by month. It opens once after an update, and any time from What's new in the sidebar.
 - Your cursor library and the backup of your original cursors moved to %APPDATA%\ProtagonistLabs\Cursor Selector, beside the other Protagonist Labs apps. It happened by itself the first time 1.4 started.
