@@ -1,6 +1,9 @@
 # What's new, built into the exe (build.cmd: /resource whatsnew.txt). Newest first.
 # "## version | yyyy-mm-dd | title", then one "- " line per point.
 
+## 1.4.2 | 2026-11-01 | Buy me a pizza
+- Buy me a pizza, a new button in the sidebar. It is optional and opens our Buy Me a Coffee page in your browser. It goes toward code signing and a Steam listing.
+
 ## 1.4.1 | 2026-10-25 | A new icon
 - A new icon, brighter and easier to spot in the taskbar. It is on the window, the sidebar and the Start menu.
 - What's new now shows a picture for each release.

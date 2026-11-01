@@ -21,8 +21,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyCompany("Protagonist Labs")]
 [assembly: System.Reflection.AssemblyProduct("Cursor Selector")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (c) 2026 Protagonist Labs. MIT licence")]
-[assembly: System.Reflection.AssemblyVersion("1.4.1")]
-[assembly: System.Reflection.AssemblyFileVersion("1.4.1")]
+[assembly: System.Reflection.AssemblyVersion("1.4.2")]
+[assembly: System.Reflection.AssemblyFileVersion("1.4.2")]
 
 namespace CursorSelector
 {
@@ -1514,7 +1514,7 @@ namespace CursorSelector
             var buttons = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                Height = 236,
+                Height = 282,
                 FlowDirection = FlowDirection.TopDown,
                 WrapContents = false,
                 BackColor = Theme.Ground2,
@@ -1524,7 +1524,8 @@ namespace CursorSelector
             var import = new FlatButton("Import and apply\u2026", false);
             var openLib = new FlatButton("Open Library folder", false);
             var refresh = new FlatButton("Refresh list", false);
-            foreach (var b in new[] { import, openLib, refresh })
+            var pizza = new FlatButton("🍕 Buy me a pizza", false) { AccessibleName = "Buy me a pizza" };
+            foreach (var b in new[] { import, openLib, refresh, pizza })
             {
                 b.Size = new Size(312, 38);
                 b.Margin = new Padding(0, 0, 0, 8);
@@ -1532,6 +1533,8 @@ namespace CursorSelector
             import.Click += OnImport;
             openLib.Click += delegate { System.Diagnostics.Process.Start("explorer.exe", _libraryDir); };
             refresh.Click += delegate { RefreshList(null); };
+            pizza.Click += delegate { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://buymeacoffee.com/protagonistlabs") { UseShellExecute = true }); };
+            new ToolTip().SetToolTip(pizza, "Optional. It goes toward code signing and a Steam listing.");
 
             var dropHint = new Label
             {
@@ -1566,7 +1569,7 @@ namespace CursorSelector
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo((string)e.Link.LinkData) { UseShellExecute = true });
             };
             links.LinkClicked += open;
-            buttons.Controls.AddRange(new Control[] { dropHint, import, openLib, refresh, links });
+            buttons.Controls.AddRange(new Control[] { dropHint, import, openLib, refresh, pizza, links });
 
             // "Works with": nicio aplicatie sora nu adauga ceva aici, deci ramane doar randul cu
             // reducerea, si numai pentru cine a cumparat deja una. In culoarea textului din jur, ca restul.
