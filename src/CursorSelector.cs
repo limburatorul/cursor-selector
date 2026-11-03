@@ -21,8 +21,8 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyCompany("Protagonist Labs")]
 [assembly: System.Reflection.AssemblyProduct("Cursor Selector")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (c) 2026 Protagonist Labs. MIT licence")]
-[assembly: System.Reflection.AssemblyVersion("1.4.2")]
-[assembly: System.Reflection.AssemblyFileVersion("1.4.2")]
+[assembly: System.Reflection.AssemblyVersion("1.4.3")]
+[assembly: System.Reflection.AssemblyFileVersion("1.4.3")]
 
 namespace CursorSelector
 {

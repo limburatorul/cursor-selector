@@ -1,6 +1,10 @@
 # What's new, built into the exe (build.cmd: /resource whatsnew.txt). Newest first.
 # "## version | yyyy-mm-dd | title", then one "- " line per point.
 
+## 1.4.3 | 2026-11-03 | The pizza button, easier to find
+- Buy me a pizza is red now, so it stands out in the sidebar, and it glows twice every 10 seconds. It stays still while the window is minimized, while your pointer is on it, or when Windows' animation effects are off.
+- It still only opens our Buy Me a Coffee page in your browser, and it is still optional.
+
 ## 1.4.2 | 2026-11-01 | Buy me a pizza
 - Buy me a pizza, a new button in the sidebar. It is optional and opens our Buy Me a Coffee page in your browser. It goes toward code signing and a Steam listing.
 
