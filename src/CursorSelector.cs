@@ -50,6 +50,11 @@ namespace CursorSelector
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool SystemParametersInfo(uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool SystemParametersInfo(uint uiAction, uint uiParam, [MarshalAs(UnmanagedType.Bool)] out bool pvParam, uint fWinIni);
+        internal const uint SPI_GETCLIENTAREAANIMATION = 0x1042;
+
         [StructLayout(LayoutKind.Sequential)]
         internal struct RECT { public int Left, Top, Right, Bottom; }
 
@@ -409,6 +414,12 @@ namespace CursorSelector
     internal sealed class FlatButton : Control
     {
         internal bool Primary;
+        // Butonul rosu "Buy me a pizza", acelasi in toate aplicatiile gratuite ale studioului.
+        // Glow e culoarea lui in repaus; MainForm.Nudge o lumineaza cateva clipe.
+        internal bool Pizza;
+        internal Color Glow = PizzaRed;
+        internal static readonly Color PizzaRed = Color.FromArgb(0xD6, 0x3A, 0x3A);
+        internal bool Hovered { get { return _hover; } }
         private bool _hover;
         private bool _pressed;
 
@@ -468,7 +479,13 @@ namespace CursorSelector
             int radius = pill.Height / 2;
 
             Color textColor;
-            if (Primary)
+            if (Pizza)
+            {
+                Color fill = _pressed ? Color.FromArgb(0xBF, 0x30, 0x30) : _hover ? Color.FromArgb(0xE5, 0x48, 0x48) : Glow;
+                textColor = Color.White;
+                Theme.FillRounded(g, pill, radius, fill);
+            }
+            else if (Primary)
             {
                 Color fill = !Enabled ? Theme.AccentMuted : _hover && !_pressed ? Theme.AccentHover : Theme.Accent;
                 textColor = Enabled ? Theme.AccentInk : Theme.Dimmer;
@@ -1302,6 +1319,10 @@ namespace CursorSelector
         private readonly Timer _timer = new Timer();
         private readonly Timer _confirm = new Timer();
         private readonly Timer _updates = new Timer { Interval = 5000 };
+        private readonly FlatButton _pizza = new FlatButton("🍕 Buy me a pizza", false) { AccessibleName = "Buy me a pizza", Pizza = true, Font = Theme.FontButtonBold };
+        private readonly Timer _nudge = new Timer { Interval = 3000 };
+        private readonly Timer _nudgeFrame = new Timer { Interval = 15 };
+        private readonly System.Diagnostics.Stopwatch _nudgeClock = new System.Diagnostics.Stopwatch();
         private bool _checking;
 
         private readonly Dictionary<string, RoleTile> _tiles = new Dictionary<string, RoleTile>(StringComparer.Ordinal);
@@ -1361,13 +1382,51 @@ namespace CursorSelector
             // Actualizarea: la cateva secunde dupa pornire, apoi la fiecare ora cat sta deschisa.
             _updates.Tick += delegate { _updates.Interval = 60 * 60 * 1000; CheckForUpdates(false); };
 
-            Shown += delegate { RefreshList(null); _timer.Start(); _updates.Start(); };
+            // Pizza pulseaza de doua ori la 3 s dupa deschidere, apoi la fiecare 10 s, ca sa fie observat.
+            // Minimizata, nu ruleaza deloc.
+            _nudge.Tick += delegate { _nudge.Interval = 10000; Nudge(); };
+            _nudgeFrame.Tick += delegate { NudgeFrame(); };
+            Resize += delegate
+            {
+                if (WindowState == FormWindowState.Minimized) { _nudge.Stop(); _nudgeFrame.Stop(); _pizza.Glow = FlatButton.PizzaRed; }
+                else if (Visible) _nudge.Start();
+            };
+
+            Shown += delegate { RefreshList(null); _timer.Start(); _updates.Start(); _nudge.Start(); };
             FormClosed += delegate
             {
                 _timer.Stop();
                 foreach (var h in _liveHandles) Native.DestroyCursor(h);
                 foreach (var h in _thumbs.Values) if (h != IntPtr.Zero) Native.DestroyCursor(h);
             };
+        }
+
+        // Fara puls cand "Animation effects" e oprit in Windows sau mouse-ul sta pe buton.
+        private void Nudge()
+        {
+            bool animate;
+            if (!Native.SystemParametersInfo(Native.SPI_GETCLIENTAREAANIMATION, 0, out animate, 0) || !animate || _pizza.Hovered) return;
+            _nudgeClock.Restart();
+            _nudgeFrame.Start();
+        }
+
+        // WinForms nu poate scala un control, deci doar culoarea: doua varfuri spre #F25555 in 700 ms,
+        // fiecare segment cu ease-out cubic.
+        private void NudgeFrame()
+        {
+            double ms = _nudgeClock.Elapsed.TotalMilliseconds;
+            if (ms >= 700 || _pizza.Hovered)
+            {
+                _nudgeFrame.Stop();
+                _pizza.Glow = FlatButton.PizzaRed;
+                _pizza.Invalidate();
+                return;
+            }
+            double p = (ms % 175) / 175, eased = 1 - Math.Pow(1 - p, 3);
+            double k = (int)(ms / 175) % 2 == 0 ? eased : 1 - eased;      // urca spre varf, apoi coboara
+            Color a = FlatButton.PizzaRed, b = Color.FromArgb(0xF2, 0x55, 0x55);
+            _pizza.Glow = Color.FromArgb(a.R + (int)((b.R - a.R) * k), a.G + (int)((b.G - a.G) * k), a.B + (int)((b.B - a.B) * k));
+            _pizza.Invalidate();
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -1524,7 +1583,7 @@ namespace CursorSelector
             var import = new FlatButton("Import and apply\u2026", false);
             var openLib = new FlatButton("Open Library folder", false);
             var refresh = new FlatButton("Refresh list", false);
-            var pizza = new FlatButton("🍕 Buy me a pizza", false) { AccessibleName = "Buy me a pizza" };
+            var pizza = _pizza;
             foreach (var b in new[] { import, openLib, refresh, pizza })
             {
                 b.Size = new Size(312, 38);
