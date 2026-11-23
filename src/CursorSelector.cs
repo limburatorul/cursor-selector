@@ -415,7 +415,7 @@ namespace CursorSelector
     /// </summary>
     internal sealed class RoleTile : Control
     {
-        internal const int W = 208, H = 64, Box = 40;
+        internal const int W = 200, H = 64, Box = 40;
 
         internal readonly string Role;
         internal string File;
@@ -1351,7 +1351,7 @@ namespace CursorSelector
         private readonly Label _subtitle = new Label();
         private readonly LinkLabel _status = new LinkLabel();
         private readonly FlatButton _apply = new FlatButton("Apply", true);
-        private readonly FlatButton _restore = new FlatButton("Restore my cursors", false);
+        private readonly FlatButton _restore = new FlatButton("Restore saved cursors", false);
         private readonly FlatButton _more = new FlatButton("", false) { Subtle = true, Glyph = "", AccessibleName = "More options" };
         private readonly Timer _timer = new Timer();
         private readonly Timer _confirm = new Timer();
@@ -1656,11 +1656,11 @@ namespace CursorSelector
             };
             var import = new FlatButton("", false)
             {
-                Subtle = true, Glyph = "", AccessibleName = "Import a cursor pack",
+                Subtle = true, Glyph = "", AccessibleName = "Import and apply",
                 Dock = DockStyle.Right, Width = 32, BackColor = Theme.Ground2
             };
             import.Click += OnImport;
-            new ToolTip().SetToolTip(import, "Import a cursor pack (.zip or folder). You can also drop one on the window.");
+            new ToolTip().SetToolTip(import, "Import and apply a cursor pack (.zip or folder). You can also drop one on the window.");
             searchRow.Controls.Add(_searchBox);
             searchRow.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 6, BackColor = Theme.Ground2 });
             searchRow.Controls.Add(import);
@@ -1904,7 +1904,7 @@ namespace CursorSelector
             };
             _more.Size = new Size(36, 32);
             _more.Margin = new Padding(6, 0, 0, 0);
-            _restore.Size = new Size(164, 32);
+            _restore.Size = new Size(176, 32);
             _restore.Margin = new Padding(8, 0, 0, 0);
             _apply.Size = new Size(110, 32);
             _apply.Margin = new Padding(16, 0, 0, 0);
