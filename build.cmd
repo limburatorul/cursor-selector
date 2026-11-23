@@ -18,12 +18,9 @@ if not exist "%CSC%" (
     /reference:System.Windows.Forms.dll ^
     /reference:System.Web.Extensions.dll ^
     /reference:Microsoft.VisualBasic.dll ^
-    /resource:"%~dp0fonts\BricolageGrotesque-Bold.ttf",Fonts.BricolageGrotesque-Bold.ttf ^
-    /resource:"%~dp0fonts\IBMPlexSans-Regular.ttf",Fonts.IBMPlexSans-Regular.ttf ^
-    /resource:"%~dp0fonts\IBMPlexSans-Bold.ttf",Fonts.IBMPlexSans-Bold.ttf ^
-    /resource:"%~dp0fonts\IBMPlexMono-Regular.ttf",Fonts.IBMPlexMono-Regular.ttf ^
     /resource:"%~dp0whatsnew.txt",whatsnew.txt ^
     /resource:"%~dp0WhatsNew\1.4.jpg",WhatsNew.1.4.jpg ^
+    /resource:"%~dp0WhatsNew\1.5.jpg",WhatsNew.1.5.jpg ^
     /resource:"%~dp0WhatsNew\m09.jpg",WhatsNew.m09.jpg ^
     /resource:"%~dp0WhatsNew\m10.jpg",WhatsNew.m10.jpg ^
     "%~dp0src\CursorSelector.cs"
